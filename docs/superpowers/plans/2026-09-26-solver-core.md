@@ -250,7 +250,7 @@ def is_adjacent(a: int, b: int) -> bool:
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `pytest tests/test_domain.py -v`
-Expected: PASS, 8 tests.
+Expected: PASS.
 
 - [ ] **Step 7: Commit**
 
@@ -428,7 +428,7 @@ class Schedule:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `pytest tests/test_domain.py -v`
-Expected: PASS, 17 tests.
+Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -744,7 +744,7 @@ def caps_deviation(scenario: Scenario, grade: int) -> dict[str, int]:
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `pytest tests/test_allocation.py -v`
-Expected: PASS, 16 tests. In particular `filler_periods(s, 4) == -1` for the both-optional case — a reportable number, not a crash.
+Expected: PASS. In particular `filler_periods(s, 4) == -1` for the both-optional case — a reportable number, not a crash.
 
 - [ ] **Step 6: Commit**
 
@@ -826,10 +826,22 @@ def test_block_periods_match_the_curriculum_demand():
         ]
 
 
-def test_grade_seven_fal_is_split_between_two_teachers():
+def test_every_block_covers_its_whole_grade():
+    # One teacher owns a subject for all three classes of a grade.
     p = meridian_problem()
-    assert p.block_for(ClassRef(7, "A"), "FAL").teacher_id == "Sanet"
-    assert p.block_for(ClassRef(7, "C"), "FAL").teacher_id == "Karin"
+    for block in p.blocks:
+        assert block.sections == ("A", "B", "C"), block
+
+
+def test_one_teacher_owns_each_grade_subject_pair():
+    p = meridian_problem()
+    for grade in p.grades:
+        for code in p.demand_for(grade):
+            owners = {
+                p.block_for(ClassRef(grade, s), code).teacher_id
+                for s in p.sections
+            }
+            assert len(owners) == 1, (grade, code, owners)
 
 
 def test_block_for_finds_the_owning_block():
@@ -1064,54 +1076,56 @@ TEACHER_NAMES: tuple[str, ...] = (
 # demand(), so toggling an optional subject or applying an override keeps every
 # block consistent with the curriculum instead of drifting from it.
 #
-# Loads: Christa/Nelmarie/Marius/Shane 57, Corlie/Handri 54, Sanet 52,
-# Carlien/Chrissie/Nanri/Petra/Riana 48, Karin 47, Tanya 45. Total 720.
+# Every block covers all three sections: one teacher owns a subject for a whole
+# grade. Subjects are grouped per teacher as far as 14 staff allow, but nobody
+# can hold a single subject — HL alone needs four teachers.
+#
+# Loads: ten teachers at 54, Chrissie and Riana 51, Karin and Shane 39.
+# Total 720, maximum 54 of 60. Forced daily minimum is at most 6 of 10.
 ASSIGNMENT: tuple[tuple[str, int, str, str], ...] = (
     # Grade 4
     ("Christa", 4, "HL", "ABC"),
     ("Nelmarie", 4, "FAL", "ABC"),
     ("Handri", 4, "MATH", "ABC"),
-    ("Marius", 4, "NST", "ABC"),
-    ("Tanya", 4, "SS", "ABC"),
-    ("Carlien", 4, "LS", "ABC"),
-    ("Shane", 4, "SPT", "ABC"),
+    ("Chrissie", 4, "NST", "ABC"),
+    ("Marius", 4, "SS", "ABC"),
+    ("Corlie", 4, "LS", "ABC"),
+    ("Nelmarie", 4, "SPT", "ABC"),
     ("Karin", 4, "BIB", "ABC"),
-    ("Tanya", 4, "SEP", "ABC"),
+    ("Shane", 4, "SEP", "ABC"),
     ("Karin", 4, "STUDY", "ABC"),
     # Grade 5
     ("Petra", 5, "HL", "ABC"),
     ("Nanri", 5, "FAL", "ABC"),
     ("Sanet", 5, "MATH", "ABC"),
     ("Riana", 5, "NST", "ABC"),
-    ("Corlie", 5, "SS", "ABC"),
-    ("Chrissie", 5, "LS", "ABC"),
-    ("Shane", 5, "SPT", "ABC"),
-    ("Karin", 5, "BIB", "ABC"),
+    ("Nelmarie", 5, "SS", "ABC"),
+    ("Handri", 5, "LS", "ABC"),
+    ("Nanri", 5, "SPT", "ABC"),
+    ("Shane", 5, "BIB", "ABC"),
     ("Shane", 5, "STUDY", "ABC"),
     # Grade 6
     ("Corlie", 6, "HL", "ABC"),
     ("Chrissie", 6, "FAL", "ABC"),
     ("Marius", 6, "MATH", "ABC"),
     ("Tanya", 6, "NST", "ABC"),
-    ("Nelmarie", 6, "SS", "ABC"),
-    ("Carlien", 6, "LS", "ABC"),
-    ("Shane", 6, "SPT", "ABC"),
-    ("Christa", 6, "BIB", "ABC"),
+    ("Nanri", 6, "SS", "ABC"),
+    ("Sanet", 6, "LS", "ABC"),
+    ("Tanya", 6, "SPT", "ABC"),
+    ("Shane", 6, "BIB", "ABC"),
     ("Shane", 6, "STUDY", "ABC"),
-    # Grade 7. FAL is split across two teachers, which is why Block carries an
-    # explicit section tuple rather than assuming all three.
-    ("Shane", 7, "HL", "ABC"),
-    ("Sanet", 7, "FAL", "AB"),
-    ("Karin", 7, "FAL", "C"),
-    ("Riana", 7, "MATH", "ABC"),
-    ("Handri", 7, "NS", "ABC"),
-    ("Nanri", 7, "SS", "ABC"),
+    # Grade 7
+    ("Riana", 7, "HL", "ABC"),
+    ("Carlien", 7, "FAL", "ABC"),
+    ("Tanya", 7, "MATH", "ABC"),
+    ("Christa", 7, "NS", "ABC"),
+    ("Petra", 7, "SS", "ABC"),
     ("Carlien", 7, "TEC", "ABC"),
-    ("Petra", 7, "EMS", "ABC"),
-    ("Christa", 7, "LO", "ABC"),
+    ("Carlien", 7, "EMS", "ABC"),
+    ("Karin", 7, "LO", "ABC"),
     ("Karin", 7, "CA", "ABC"),
-    ("Nelmarie", 7, "BIB", "ABC"),
-    ("Tanya", 7, "SPT", "ABC"),
+    ("Shane", 7, "BIB", "ABC"),
+    ("Carlien", 7, "SPT", "ABC"),
 )
 
 
@@ -1175,7 +1189,7 @@ def meridian_problem(
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `pytest tests/test_problem.py -v`
-Expected: PASS, 13 tests.
+Expected: PASS.
 
 If `test_meridian_demand_is_seven_hundred_and_twenty_periods` fails, the fixture's `ASSIGNMENT` periods do not match `demand()` — fix the fixture to match spec §4.1–4.3, never the allocation code.
 
@@ -1203,7 +1217,7 @@ missing or wholly duplicated assignments."
   - `Finding(code: str, severity: str, message: str)` — `severity` is `"error"` or `"warning"`
   - `preflight(problem) -> list[Finding]` — errors first, then warnings
   - `has_errors(findings) -> bool`
-  - Error codes: `curriculum_bounds`, `class_total`, `coverage`, `block_periods`, `teacher_capacity`, `teacher_daily_floor`, `blocked_day_conflict`
+  - Error codes: `curriculum_bounds`, `class_total`, `coverage`, `block_wholeness`, `block_periods`, `teacher_capacity`, `teacher_daily_floor`, `blocked_day_conflict`
   - Warning codes: `caps_deviation`, `load_spread`, `optional_off`
 
 Each check has one test that trips it and one that does not.
@@ -1302,6 +1316,25 @@ def test_coverage_error_when_a_block_is_duplicated():
     assert "coverage" in codes(preflight(p), "error")
 
 
+# --- block_wholeness --------------------------------------------------------
+def test_a_grade_subject_split_between_two_teachers_is_rejected():
+    # The school's rule: one teacher owns a subject for a whole grade.
+    split = tuple(
+        a for a in ASSIGNMENT if not (a[1] == 7 and a[2] == "FAL")
+    ) + (("Carlien", 7, "FAL", "AB"), ("Karin", 7, "FAL", "C"))
+    p = meridian_problem(assignment=split)
+    findings = preflight(p)
+    assert "block_wholeness" in codes(findings, "error")
+    message = next(f.message for f in findings if f.code == "block_wholeness")
+    assert "FAL" in message and "A, B" in message
+
+
+def test_block_wholeness_passes_for_the_real_school():
+    assert "block_wholeness" not in codes(
+        preflight(meridian_problem()), "error"
+    )
+
+
 # --- block_periods ----------------------------------------------------------
 def test_block_periods_must_match_the_curriculum():
     from roster.curriculum import Curriculum, CurriculumEntry, Scenario
@@ -1333,7 +1366,7 @@ def test_no_coverage_error_for_the_real_school():
 # --- teacher_capacity -------------------------------------------------------
 def test_teacher_over_sixty_periods_is_named():
     # Give grade 5 Afrikaans to Christa, who already holds grade 4 Afrikaans.
-    # Her load becomes 36 + 9 + 12 + 36 = 93 against 60 available.
+    # Her load becomes 36 (HL4) + 18 (NS7) + 36 (HL5) = 90 against 60.
     swapped = tuple(
         ("Christa", g, c, sec) if (g, c) == (5, "HL") else (t, g, c, sec)
         for t, g, c, sec in ASSIGNMENT
@@ -1342,12 +1375,12 @@ def test_teacher_over_sixty_periods_is_named():
     findings = preflight(p)
     assert "teacher_capacity" in codes(findings, "error")
     message = next(f.message for f in findings if f.code == "teacher_capacity")
-    assert "Christa" in message and "93" in message and "60" in message
+    assert "Christa" in message and "90" in message and "60" in message
 
 
 def test_blocked_slots_count_against_capacity():
-    # Karin holds 47 periods; block 20 slots and only 40 remain available.
-    p = meridian_problem(blocked={"Karin": frozenset(range(20))})
+    # Karin holds 39 periods; block 25 slots and only 35 remain available.
+    p = meridian_problem(blocked={"Karin": frozenset(range(25))})
     findings = preflight(p)
     assert "teacher_capacity" in codes(findings, "error")
 
@@ -1358,7 +1391,7 @@ def test_teacher_capacity_passes_for_the_real_school():
 
 # --- teacher_daily_floor ----------------------------------------------------
 def test_two_twelve_period_core_blocks_need_twelve_periods_a_day():
-    # Handri takes grade 4 MATH (12) and grade 6 MATH (12): 6 + 6 forced daily
+    # Handri takes grade 4 MATH (12) and grade 6 MATH (12): 2 per class per day
     # across three classes each, so 12 periods in a 10-period day.
     swapped = tuple(
         ("Handri", g, c, sec) if (g, c) == (6, "MATH") else (t, g, c, sec)
@@ -1399,9 +1432,9 @@ def test_teacher_blocked_part_of_a_day_is_fine():
 
 
 def test_blocked_day_without_a_daily_subject_is_fine():
-    # Tanya holds SS, NST and SPT, none of which must appear daily.
+    # Karin holds LO, CA, BIB and STUDY, none of which must appear daily.
     day_one = frozenset(range(0, PERIODS_PER_DAY))
-    p = meridian_problem(blocked={"Tanya": day_one})
+    p = meridian_problem(blocked={"Karin": day_one})
     assert "blocked_day_conflict" not in codes(preflight(p), "error")
 
 
@@ -1558,6 +1591,32 @@ def _check_coverage(problem: Problem) -> list[Finding]:
                     "error",
                     f"{class_ref} {code} is assigned to {count} blocks; "
                     f"it must be assigned exactly once.",
+                )
+            )
+    return out
+
+
+def _check_block_wholeness(problem: Problem) -> list[Finding]:
+    """A block must cover every class of its grade.
+
+    One teacher owns a subject for a whole grade, so a (grade, subject) split
+    between two teachers is a configuration error rather than a supported
+    arrangement.
+    """
+    out: list[Finding] = []
+    for block in problem.blocks:
+        missing = [s for s in problem.sections if s not in block.sections]
+        if missing:
+            teacher = problem.teachers.get(block.teacher_id)
+            name = teacher.name if teacher else block.teacher_id
+            out.append(
+                Finding(
+                    "block_wholeness",
+                    "error",
+                    f"{name} holds Gr{block.grade} {block.subject_code} for "
+                    f"only {', '.join(block.sections)} — a subject must be "
+                    f"taught to the whole grade by one teacher. Missing: "
+                    f"{', '.join(missing)}.",
                 )
             )
     return out
@@ -1744,6 +1803,7 @@ def preflight(problem: Problem) -> list[Finding]:
     errors += _check_curriculum_bounds(problem)
     errors += _check_class_totals(problem)
     errors += _check_coverage(problem)
+    errors += _check_block_wholeness(problem)
     errors += _check_block_periods(problem)
     errors += _check_teacher_capacity(problem)
     errors += _check_teacher_daily_floor(problem)
@@ -1760,7 +1820,7 @@ def preflight(problem: Problem) -> list[Finding]:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `pytest tests/test_preflight.py -v`
-Expected: PASS, 24 tests.
+Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -1768,7 +1828,7 @@ Expected: PASS, 24 tests.
 git add roster/preflight.py tests/test_preflight.py
 git commit -m "feat: add layer 1 arithmetic pre-flight checks
 
-Seven error checks and three warnings, each named and each explaining
+Eight error checks and three warnings, each named and each explaining
 the specific numbers involved. Curriculum bounds reject a core subject
 outside 6-12 periods so an unsatisfiable daily rule is reported as a
 curriculum error rather than a mystery infeasibility."
@@ -2251,7 +2311,7 @@ def count_doubles(problem: Problem, schedule: Schedule) -> int:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `pytest tests/test_verify.py -v`
-Expected: PASS, 14 tests.
+Expected: PASS.
 
 If `test_a_valid_schedule_produces_no_violations` fails, the fault is in the
 test's `build_valid_schedule` helper, not the verifier — read the violation
@@ -2963,7 +3023,7 @@ def test_blocked_slots_are_respected_end_to_end():
 
 def test_sepedi_on_with_an_override_solves():
     # Grade 4 fits 61 periods into 60 only by shaving two CAPS subjects.
-    # Sepedi is already assigned to Tanya in the fixture.
+    # Sepedi is already assigned to Shane in the fixture.
     problem = meridian_problem(
         enabled_optional=("BIB", "SEP", "SPT"),
         overrides={(4, "SS"): 5, (4, "LS"): 5},
@@ -3114,7 +3174,7 @@ def explain(problem, built, solver) -> ConflictReport:
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `pytest tests/test_solve.py -v`
-Expected: PASS, 12 tests.
+Expected: PASS.
 
 If `test_real_school_solves_and_verifies_clean` reports BLOCKED, read the
 error findings — the fixture's assignment has drifted from the curriculum and
@@ -3427,7 +3487,7 @@ def explain(problem: Problem, built, solver) -> ConflictReport:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `pytest tests/test_diagnose.py -v`
-Expected: PASS, 7 tests.
+Expected: PASS.
 
 If `test_explain_names_the_conflicting_rule_groups` gets an empty tuple, check
 that `build()` calls `model.AddAssumption` for every rule — without it CP-SAT
@@ -3577,7 +3637,7 @@ def test_every_class_slot_is_always_filled(problem):
 - [ ] **Step 2: Run the property tests**
 
 Run: `pytest tests/test_properties.py -v`
-Expected: PASS, 3 tests. These are slower — roughly a minute total.
+Expected: PASS. These are slower — roughly a minute total.
 
 If a generated case fails, Hypothesis prints the minimal reproducing problem.
 Copy it into `tests/test_solve.py` as a named regression test before fixing the
@@ -3974,7 +4034,7 @@ __all__ = [
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `pytest tests/test_cli.py -v`
-Expected: PASS, 8 tests.
+Expected: PASS.
 
 - [ ] **Step 7: Run the whole suite and exercise the CLI by hand**
 
@@ -4047,11 +4107,20 @@ Those are phases 2–4 with their own plans.
 4. Whole-day block plus daily subject → `test_teacher_blocked_all_day_cannot_hold_a_daily_subject` (Task 5)
 5. Coverage overlap → `test_coverage_reports_partial_overlap_between_two_blocks` (Task 4)
 
-**Fixture loads, hand-checked:** Christa, Nelmarie, Marius and Shane 57;
-Corlie and Handri 54; Sanet 52; Carlien, Chrissie, Nanri, Petra and Riana 48;
-Karin 47; Tanya 45. Total 720, maximum 57 of 60, spread 12. Every teacher's
-forced daily minimum is at most 9 of 10 periods. Task 4 asserts the capacity
-bound so a future edit to the fixture cannot silently break it.
+**Fixture loads, hand-checked:** Carlien, Christa, Corlie, Handri, Marius,
+Nanri, Nelmarie, Petra, Sanet and Tanya 54; Chrissie and Riana 51; Karin and
+Shane 39. Total 720, maximum 54 of 60, spread 15. Every block covers all three
+sections, and no teacher's forced daily minimum exceeds 6 of 10 periods, which
+leaves the solver far more room than the previous packing did. Task 4 asserts
+both the capacity bound and whole-grade ownership so a future edit cannot
+silently break either.
+
+**Why every teacher holds more than one subject:** subject purity is not
+reachable at this staffing level. HL needs 4 teachers (two 36-period blocks
+exceed 60) and MATH 4 more; with NST, SS and the rest the floor is above 20
+against 14 staff. The fixture groups subjects per teacher where it can — three
+of Carlien's four blocks are Grade 7, and Shane carries Bible across grades —
+but it cannot go further.
 
 **Known expected failure:** Task 7 Step 4 leaves
 `test_model_solves_the_real_school_and_the_verifier_agrees` failing until Task 8

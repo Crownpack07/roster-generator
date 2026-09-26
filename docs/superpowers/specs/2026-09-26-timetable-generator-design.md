@@ -91,10 +91,17 @@ Block     { teacherId, grade, subjectCode, classes: [section], periodsPerClass }
 ```
 
 **`Block` is the central abstraction.** One teacher, one subject, one grade, a set
-of classes, N periods per class. Defaulting `classes` to `["A","B","C"]` expresses
-the school's normal pattern in a single row, while the same concept also covers
-filler duty split per class or a subject shared between two teachers — one uniform
-idea rather than a rule plus exceptions.
+of classes, N periods per class.
+
+**A block must cover every class of its grade.** The school's rule is that one
+teacher owns a subject for a whole grade: if someone teaches Grade 7 English,
+they teach it to 7A, 7B and 7C. Splitting a (grade, subject) between two
+teachers is a validation error, not a supported configuration (§7.1).
+
+`classes` remains an explicit tuple rather than being implied, for two reasons.
+A block stays self-describing — it knows its own total load without consulting
+the problem — and the invariant becomes a checked rule with a named error
+rather than an assumption buried in the loader.
 
 A block's total load is `periodsPerClass × len(classes)`.
 
@@ -206,6 +213,12 @@ every block carries a fixed period count. The solver decides *when* they teach,
 never *how much*. Load fairness is therefore an assignment-editor diagnostic, not
 a solver objective — the editor is the only place it can be fixed.
 
+**Teachers carry more than one subject, necessarily.** Subject specialisation is
+not achievable at this staffing level: HL alone needs 4 teachers and MATH 4
+more, which with the remaining subjects puts the floor above 20 against 14
+staff. The assignment editor therefore does not attempt to enforce one subject
+per teacher; it enforces whole-grade ownership instead.
+
 ### 5.2 Scheduling (machine-owned)
 
 Given a valid assignment, place every block's periods into slots. The solver's
@@ -299,15 +312,20 @@ explains them better than any solver can.
    unassigned, nothing assigned twice.
 2. **Class arithmetic** — each grade totals exactly 60 periods per class. Catches
    §4.4.
-3. **Teacher capacity** — load + blocked slots ≤ 60. Reports by name:
+3. **Block wholeness** — every block covers all three classes of its grade. A
+   (grade, subject) split between two teachers is rejected by name.
+4. **Block periods** — a block's stored period count matches the curriculum it
+   serves, since the count is stored for the editor and can drift from an
+   override.
+5. **Teacher capacity** — load + blocked slots ≤ 60. Reports by name:
    *"Christa is assigned 72 periods; only 60 exist (Gr4 Afrikaans 36 + Gr5
    Afrikaans 36)."*
-4. **Teacher daily floor** — a core subject with 12 periods across 6 days capped
+6. **Teacher daily floor** — a core subject with 12 periods across 6 days capped
    at 2 per day is *forced* to 2 every day; across 3 classes that is 6 periods
    daily. Per teacher: `sum over blocks of len(classes) × max(1, n − 10) <= 10`.
    Catches one person holding two 12-period core blocks, which needs 12 periods
    in a 10-period day.
-5. **Blocked-day conflict** — a teacher blocked for an entire day while holding a
+7. **Blocked-day conflict** — a teacher blocked for an entire day while holding a
    subject that must appear every day.
 
 ### 7.2 Layer 2 — solver conflict report
@@ -548,6 +566,8 @@ worker; production uses all threads.
 | Periods only, never minutes | Period lengths flex in practice; modelling time adds no value |
 | Solver obeys assignment absolutely | Keeps the human in control and makes "your assignment is the problem" a first-class answer |
 | Filler as an ordinary subject | Makes exactly-one-per-slot correct and removes the concept of an empty slot |
+| A block covers a whole grade | The school's rule: one teacher owns a subject for all three classes of a grade. Enforced, not assumed |
+| Teachers hold several subjects | Subject purity would need 20+ staff against 14; it is a staffing limit, not a modelling choice |
 | Core capped at 2 periods per day | Prevents clumping and makes "double" unambiguous |
 | Load fairness is not a solver objective | Load is fixed by the assignment; the solver cannot change it |
 | Monochrome class and teacher grids | The school colours printouts by hand |

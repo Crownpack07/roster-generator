@@ -1879,7 +1879,13 @@ def build_valid_schedule(problem) -> Schedule:
     Two phases, both deterministic. Core subjects take an exact 1-or-2 per day
     split, which is the only shape the rules permit. Non-core subjects are then
     dealt to whichever days have the most room left, never exceeding their own
-    daily cap. Teacher clashes are ignored — separate tests cover those.
+    daily cap.
+
+    Teacher clashes are NOT avoided, by design. The layout depends only on the
+    grade, so all three sections of a grade come out identical, and since one
+    teacher owns a subject for the whole grade every period collides. Avoiding
+    that means solving the scheduling problem — the solver's job. This helper
+    exists to exercise the per-class rules; the clash rule has its own tests.
 
     A naive round-robin over days does NOT work here: day 0 attracts a period
     from every subject with a remainder and overflows, then spills into days
@@ -1950,10 +1956,37 @@ def test_verifier_does_not_depend_on_the_solver():
     assert forbidden == set(), forbidden
 
 
-def test_a_valid_schedule_produces_no_violations():
+def test_a_valid_schedule_satisfies_every_per_class_rule():
+    """The helper lays out each class correctly, one class at a time.
+
+    It cannot avoid teacher clashes, and is not meant to: it derives a class's
+    layout from its GRADE alone, so 4A, 4B and 4C come out identical — and
+    because one teacher owns a subject for all three sections, every period
+    collides. Producing a clash-free schedule means solving the timetabling
+    problem, which is the solver's job, not a test helper's.
+
+    So this pins the seven per-class rules and nothing else. The clash rule
+    gets its own pair of tests: one that it fires, one that it does not
+    over-fire.
+    """
     problem = meridian_problem()
     schedule = build_valid_schedule(problem)
-    assert verify(problem, schedule) == []
+    codes = {v.code for v in verify(problem, schedule)}
+    assert codes == {"teacher_clash"}, codes
+
+
+def test_teacher_clash_is_not_reported_when_the_slots_differ():
+    """The clash check must not fire on a teacher's legitimate second class."""
+    problem = meridian_problem()
+    # Christa owns grade 4 HL across every section: two classes, two slots.
+    schedule = Schedule(
+        (
+            Placement(ClassRef(4, "A"), "HL", 0),
+            Placement(ClassRef(4, "B"), "HL", 1),
+        )
+    )
+    codes = {v.code for v in verify(problem, schedule)}
+    assert "teacher_clash" not in codes
 
 
 def test_empty_schedule_reports_unfilled_slots():
@@ -2343,9 +2376,11 @@ def count_doubles(problem: Problem, schedule: Schedule) -> int:
 Run: `pytest tests/test_verify.py -v`
 Expected: PASS.
 
-If `test_a_valid_schedule_produces_no_violations` fails, the fault is in the
-test's `build_valid_schedule` helper, not the verifier — read the violation
-messages, which name the class, subject and day.
+If `test_a_valid_schedule_satisfies_every_per_class_rule` reports a code other
+than `teacher_clash`, the fault is in the helper or the verifier, not the
+assertion — read the violation messages, which name the class, subject and day.
+`teacher_clash` is expected and is what the assertion allows: the helper is
+per-grade, so it cannot place three sections without collisions.
 
 - [ ] **Step 5: Commit**
 

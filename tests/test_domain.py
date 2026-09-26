@@ -61,3 +61,67 @@ def test_adjacency_is_symmetric_and_rejects_gaps():
 def test_out_of_range_slot_rejected(bad):
     with pytest.raises(ValueError):
         day_of(bad)
+
+
+from roster.domain import Block, ClassRef, Placement, Schedule, Subject, Teacher
+
+
+def test_class_ref_prints_as_grade_and_section():
+    assert str(ClassRef(4, "A")) == "4A"
+    assert str(ClassRef(7, "C")) == "7C"
+
+
+def test_block_total_is_periods_times_classes():
+    block = Block("t1", 4, "HL", ("A", "B", "C"), 12)
+    assert block.total_periods == 36
+    assert block.class_refs() == (ClassRef(4, "A"), ClassRef(4, "B"), ClassRef(4, "C"))
+
+
+def test_block_may_cover_fewer_than_all_sections():
+    # Filler duty split per class, or a subject shared between two teachers.
+    block = Block("t2", 5, "STUDY", ("B",), 1)
+    assert block.total_periods == 1
+    assert block.class_refs() == (ClassRef(5, "B"),)
+
+
+def test_block_rejects_empty_sections():
+    with pytest.raises(ValueError):
+        Block("t1", 4, "HL", (), 12)
+
+
+def test_block_rejects_duplicate_sections():
+    with pytest.raises(ValueError):
+        Block("t1", 4, "HL", ("A", "A"), 12)
+
+
+def test_teacher_blocked_slots_are_a_frozenset():
+    teacher = Teacher("t1", "Petra", frozenset({10, 11}))
+    assert 10 in teacher.blocked_slots
+    assert 12 not in teacher.blocked_slots
+
+
+def test_schedule_maps_slots_to_subjects_per_class():
+    c = ClassRef(4, "A")
+    schedule = Schedule(
+        (
+            Placement(c, "HL", 0),
+            Placement(c, "HL", 1),
+            Placement(c, "MATH", 2),
+        )
+    )
+    assert schedule.for_class(c) == {0: "HL", 1: "HL", 2: "MATH"}
+    assert schedule.slots_of(c, "HL") == [0, 1]
+    assert schedule.slots_of(c, "SS") == []
+
+
+def test_schedule_slots_are_returned_sorted():
+    c = ClassRef(6, "B")
+    schedule = Schedule((Placement(c, "SS", 41), Placement(c, "SS", 7)))
+    assert schedule.slots_of(c, "SS") == [7, 41]
+
+
+def test_subject_flags():
+    core = Subject("MATH", "Mathematics", is_core=True, is_optional=False)
+    optional = Subject("BIB", "Bible Education", is_core=False, is_optional=True)
+    assert core.is_core and not core.is_optional
+    assert optional.is_optional and not optional.is_core

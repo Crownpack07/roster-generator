@@ -72,7 +72,7 @@ Five conditions the spec implies that no obvious task would exercise, most likel
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: `DAYS = 6`, `PERIODS_PER_DAY = 10`, `SLOT_COUNT = 60`; `day_of(slot: int) -> int`, `period_of(slot: int) -> int`, `slots_of_day(day: int) -> list[int]`, `adjacent_pairs_of_day(day: int) -> list[tuple[int, int]]`, `all_adjacent_pairs() -> list[tuple[int, int]]`, `is_adjacent(a: int, b: int) -> bool`.
+- Produces: `DAYS = 6`, `PERIODS_PER_DAY = 10`, `SLOT_COUNT = 60`, `FILLER_CODE = "STUDY"`; `day_of(slot: int) -> int`, `period_of(slot: int) -> int`, `slots_of_day(day: int) -> list[int]`, `adjacent_pairs_of_day(day: int) -> list[tuple[int, int]]`, `all_adjacent_pairs() -> list[tuple[int, int]]`, `is_adjacent(a: int, b: int) -> bool`.
 
 - [ ] **Step 1: Create the package scaffold**
 
@@ -1859,7 +1859,7 @@ Written before the solver, on purpose. It is the operative definition of a corre
 ```python
 import pytest
 
-from roster.allocation import demand
+from roster.allocation import max_per_day
 from roster.domain import (
     DAYS,
     PERIODS_PER_DAY,
@@ -1874,50 +1874,80 @@ from tests.fixtures.meridian import meridian_problem
 
 
 def build_valid_schedule(problem) -> Schedule:
-    """Lay each class's demand out slot by slot, ignoring teacher clashes.
+    """Lay out each class's demand day by day, respecting every daily cap.
 
-    Core subjects are placed two-per-day first so the core daily rule holds;
-    everything else fills the remaining slots in order.
+    Two phases, both deterministic. Core subjects take an exact 1-or-2 per day
+    split, which is the only shape the rules permit. Non-core subjects are then
+    dealt to whichever days have the most room left, never exceeding their own
+    daily cap. Teacher clashes are ignored — separate tests cover those.
+
+    A naive round-robin over days does NOT work here: day 0 attracts a period
+    from every subject with a remainder and overflows, then spills into days
+    that are already at their cap.
     """
     placements: list[Placement] = []
     for class_ref in problem.classes():
-        wanted = demand(problem.scenario, class_ref.grade)
-        core = {c: n for c, n in wanted.items() if problem.is_core(c)}
-        rest = {c: n for c, n in wanted.items() if not problem.is_core(c)}
+        wanted = problem.demand_for(class_ref.grade)
+        per_day: dict[str, list[int]] = {}
 
-        free = [list(slots_of_day(d)) for d in range(DAYS)]
-        # Core: one per day for each, then pair up the remainder day by day.
-        for code, n in core.items():
-            per_day = [1] * DAYS
-            for i in range(n - DAYS):
-                per_day[i] += 1
-            for day in range(DAYS):
-                for _ in range(per_day[day]):
-                    placements.append(
-                        Placement(class_ref, code, free[day].pop(0))
-                    )
-        # Non-core: spread round-robin across days so no day exceeds its cap.
-        remaining = [(c, n) for c, n in rest.items()]
-        day = 0
-        for code, n in remaining:
+        # Core: one every day, plus a second on the first (n - 6) days.
+        for code, n in wanted.items():
+            if problem.is_core(code):
+                per_day[code] = [
+                    1 + (1 if d < n - DAYS else 0) for d in range(DAYS)
+                ]
+
+        room = [
+            PERIODS_PER_DAY - sum(counts[d] for counts in per_day.values())
+            for d in range(DAYS)
+        ]
+
+        # Non-core, largest first: deal to the roomiest day that is under cap.
+        non_core = sorted(
+            ((c, n) for c, n in wanted.items() if not problem.is_core(c)),
+            key=lambda pair: -pair[1],
+        )
+        for code, n in non_core:
+            cap = max_per_day(n)
+            counts = [0] * DAYS
             for _ in range(n):
-                while not free[day % DAYS]:
-                    day += 1
-                placements.append(
-                    Placement(class_ref, code, free[day % DAYS].pop(0))
+                day = max(
+                    (d for d in range(DAYS) if counts[d] < cap and room[d] > 0),
+                    key=lambda d: room[d],
                 )
-                day += 1
+                counts[day] += 1
+                room[day] -= 1
+            per_day[code] = counts
+
+        for day in range(DAYS):
+            slots = iter(slots_of_day(day))
+            for code, counts in per_day.items():
+                for _ in range(counts[day]):
+                    placements.append(Placement(class_ref, code, next(slots)))
+
     return Schedule(tuple(placements))
 
 
 def test_verifier_does_not_depend_on_the_solver():
+    """The verifier must share no code with the model.
+
+    Checked by parsing the real import statements rather than scanning the
+    text: the module's own docstring names both forbidden modules on purpose,
+    and a comment mentioning ortools is not a dependency.
+    """
+    import ast
     import roster.verify as module
 
-    source = module.__file__
-    with open(source, encoding="utf-8") as fh:
-        text = fh.read()
-    assert "ortools" not in text
-    assert "roster.model" not in text
+    tree = ast.parse(open(module.__file__, encoding="utf-8").read())
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module)
+
+    forbidden = {m for m in imported if m.startswith(("ortools", "roster.model"))}
+    assert forbidden == set(), forbidden
 
 
 def test_a_valid_schedule_produces_no_violations():
@@ -2753,7 +2783,9 @@ Expected: FAIL — `ImportError: cannot import name 'total_doubles_ceiling'`
 
 - [ ] **Step 3: Implement the remaining rules and the objective**
 
-Add to `roster/model.py` — extend `build` and append the helpers:
+In `roster/model.py`, **replace the existing `build` function body** with the
+version below — do not add a second `def build`, which would shadow the first
+and silently drop Task 7's rules. Then append the new helpers after it:
 
 ```python
 def build(problem: Problem) -> BuiltModel:

@@ -389,10 +389,35 @@ payload is a few KB.
 
 **Exports are server-side**, so PDF and Excel share one layout implementation.
 
-**Solve is synchronous with a hard timeout, and writes a `solutions` document.**
-At ~7,200 variables it returns well under a second, so a job queue is premature.
-Because the result already lands in a collection, moving to background jobs later
-changes only the endpoint, never the data model.
+**Solve writes a `solutions` document, and must run as a background job.**
+
+An earlier draft of this section claimed that at ~7,200 variables the solve
+"returns well under a second, so a job queue is premature." **That was an
+untested assumption and it is false.** Measured on the real assignment
+(`linearization_level = 0`, which the solver sets — see §14):
+
+| scenario | result |
+|---|---|
+| the school as configured | first solution **10.5s**; optimality unproven at 200s |
+| one teacher's two slots blocked | **no solution at all** within 200s |
+| Sepedi enabled with two CAPS overrides | **no solution at all** within 200s |
+
+So a synchronous HTTP request cannot carry this work. Phase 2 must put solving
+behind a background job with polling from its first commit — the "scale-later
+seam" this section originally deferred is needed at the start. Freezing the
+input on the `solutions` document (above) is what makes that straightforward:
+the job owns a snapshot and the endpoint only reads status.
+
+**Solver hardness is a known property, not a defect.** The model solves the
+school as configured and becomes unreliable under small perturbations; blocking
+Karin's slots fails where blocking Shane's succeeds, despite identical teaching
+loads and both holding only non-core subjects. Solvability is not predictable
+from the assignment's shape. Two consequences the UI must honour: `unknown` is a
+routine outcome for a perturbed scenario and must never be shown as
+"impossible" (§7.3), and the blocked-slot feature (§7.1, §11.1) can leave a
+school with no answer, so it needs to say so plainly rather than appear broken.
+Improving this — search hints, redundant constraints, symmetry breaking across
+a grade's three identical sections — is scoped as separate work.
 
 **Deployment is one container**: FastAPI serves the built React bundle as static
 files. OR-Tools puts the image at roughly 400–500 MB, which rules out hosts with
@@ -549,8 +574,20 @@ Then, in order:
 
 **Determinism:** CP-SAT searches on multiple threads by default, so the same
 problem can return different but equally valid timetables per run, and any test
-asserting an exact schedule flakes. Tests fix the random seed and force a single
-worker; production uses all threads.
+asserting an exact schedule flakes.
+
+**Fixing the seed does not buy reproducibility under a time limit.** An earlier
+draft claimed it did. Measured: two runs with an identical seed and a single
+worker return different schedules, because a wall-clock budget stops the search
+wherever it happens to be when the clock expires — reproducibility would require
+the search to run to completion, which on this model it does not. Tests
+therefore assert *properties* of a returned schedule (valid per the verifier,
+expected period counts, expected doubles bounds) and never an exact schedule.
+
+The solver disables CP-SAT's linear relaxation (`linearization_level = 0`) in
+both production and tests, measured at 7-18x faster to a first solution on every
+solvable instance; at CP-SAT's default the school needs ~69s, which would hand a
+real administrator `unknown` for the primary use case.
 
 ## 15. Deferred
 

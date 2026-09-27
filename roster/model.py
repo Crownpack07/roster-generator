@@ -15,13 +15,14 @@ from dataclasses import dataclass, field
 
 from ortools.sat.python import cp_model
 
-from roster.allocation import max_per_day
+from roster.allocation import doubles_ceiling, max_per_day
 from roster.domain import (
     DAYS,
     SLOT_COUNT,
     ClassRef,
     Placement,
     Schedule,
+    adjacent_pairs_of_day,
     slots_of_day,
 )
 from roster.problem import Problem
@@ -79,6 +80,10 @@ def build(problem: Problem) -> BuiltModel:
     _add_slot_filled(problem, built)
     _add_period_counts(problem, built)
     _add_teacher_rules(problem, built)
+    _add_core_daily(problem, built)
+    _add_spread(problem, built)
+    _add_doubles(problem, built)
+    _set_objective(built)
     return built
 
 
@@ -122,6 +127,85 @@ def _add_teacher_rules(problem: Problem, built: BuiltModel) -> None:
                 built.model.Add(sum(terms) == 0).OnlyEnforceIf(blocked_guard)
             else:
                 built.model.Add(sum(terms) <= 1).OnlyEnforceIf(clash_guard)
+
+
+def _add_core_daily(problem: Problem, built: BuiltModel) -> None:
+    guard = built.assumptions[RULE_CORE_DAILY]
+    for class_ref in problem.classes():
+        for code in problem.demand_for(class_ref.grade):
+            if not problem.is_core(code):
+                continue
+            for day in range(DAYS):
+                terms = [
+                    built.x[(class_ref, code, slot)]
+                    for slot in slots_of_day(day)
+                ]
+                built.model.Add(sum(terms) >= CORE_MIN_PER_DAY).OnlyEnforceIf(
+                    guard
+                )
+                built.model.Add(sum(terms) <= CORE_MAX_PER_DAY).OnlyEnforceIf(
+                    guard
+                )
+
+
+def _add_spread(problem: Problem, built: BuiltModel) -> None:
+    guard = built.assumptions[RULE_SPREAD]
+    for class_ref in problem.classes():
+        for code, n in problem.demand_for(class_ref.grade).items():
+            if problem.is_core(code):
+                continue
+            cap = max_per_day(n)
+            for day in range(DAYS):
+                terms = [
+                    built.x[(class_ref, code, slot)]
+                    for slot in slots_of_day(day)
+                ]
+                built.model.Add(sum(terms) <= cap).OnlyEnforceIf(guard)
+
+
+def _add_doubles(problem: Problem, built: BuiltModel) -> None:
+    """One reified variable per (class, core subject, same-day adjacent pair).
+
+    Because a core subject runs at most twice a day, at most one pair per day
+    can be true, so summing these variables counts doubles without the
+    triple-counting a longer run would cause.
+    """
+    guard = built.assumptions[RULE_MIN_DOUBLES]
+    for class_ref in problem.classes():
+        for code in problem.demand_for(class_ref.grade):
+            if not problem.is_core(code):
+                continue
+            pair_vars: list[cp_model.IntVar] = []
+            for day in range(DAYS):
+                for a, b in adjacent_pairs_of_day(day):
+                    y = built.model.NewBoolVar(f"d_{class_ref}_{code}_{a}")
+                    xa = built.x[(class_ref, code, a)]
+                    xb = built.x[(class_ref, code, b)]
+                    built.model.Add(y <= xa)
+                    built.model.Add(y <= xb)
+                    built.model.Add(y >= xa + xb - 1)
+                    built.doubles[(class_ref, code, (a, b))] = y
+                    pair_vars.append(y)
+            minimum = problem.scenario.min_doubles.get(
+                (class_ref.grade, code), 0
+            )
+            if minimum:
+                built.model.Add(sum(pair_vars) >= minimum).OnlyEnforceIf(guard)
+
+
+def _set_objective(built: BuiltModel) -> None:
+    """Maximise total doubles. This is the only objective."""
+    built.model.Maximize(sum(built.doubles.values()))
+
+
+def total_doubles_ceiling(problem: Problem) -> int:
+    """Doubles achievable across every class, summed."""
+    total = 0
+    for class_ref in problem.classes():
+        for code, n in problem.demand_for(class_ref.grade).items():
+            if problem.is_core(code):
+                total += doubles_ceiling(n)
+    return total
 
 
 def schedule_from(

@@ -285,6 +285,11 @@ objective earns doubles rather than the constraint demanding them. Setting it to
 the `n − 6` ceiling converts a preference into a hard rule and is the fastest
 route to an unbuildable timetable.
 
+**Measured, not assumed.** For Grade 4 HL (12 periods, ceiling 6) on the real
+assignment: a minimum of 3, 4 or 5 yields a timetable with a first solution in
+roughly 4 seconds, while 6 returns `unknown` after 90 seconds. So the ceiling is
+an upper bound on what the objective can earn, never a target to demand.
+
 ### 6.6 Objective
 
 **Maximise total doubles.** A single objective, no competing weights, no tuning.

@@ -2796,7 +2796,17 @@ def test_model_and_verifier_agree_on_the_doubles_count():
 
 
 def test_min_doubles_is_honoured_when_set():
-    problem = meridian_problem(min_doubles={(4, "HL"): 6})
+    """A minimum below the ceiling is enforced.
+
+    Deliberately 4, not 6. Grade 4 HL has 12 periods, so its doubles ceiling
+    is 6 — and demanding the ceiling as a HARD constraint is the one thing
+    spec 6.5 warns against. Measured: min_doubles of 3, 4 and 5 all solve
+    (first solution in about 4 seconds), while 6 returns UNKNOWN after 90
+    seconds, so the ceiling is not reachable as a hard rule on this fixture.
+    This test's job is to prove a minimum is honoured, not to prove the
+    ceiling is attainable — which it is not.
+    """
+    problem = meridian_problem(min_doubles={(4, "HL"): 4})
     built = build(problem)
     solver, status = solve_built(built, time_limit=60.0)
     assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
@@ -2808,7 +2818,7 @@ def test_min_doubles_is_honoured_when_set():
             for i in range(len(slots) - 1)
             if slots[i + 1] == slots[i] + 1 and day_of(slots[i]) == day_of(slots[i + 1])
         )
-        assert pairs >= 6
+        assert pairs >= 4
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**

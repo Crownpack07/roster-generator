@@ -36,7 +36,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {path} is not valid JSON ({exc})", file=sys.stderr)
         return 2
 
-    problem = problem_from_dict(data)
+    try:
+        problem = problem_from_dict(data)
+    except (KeyError, TypeError, ValueError) as exc:
+        # Valid JSON, wrong shape: a missing or misspelled key, a truncated
+        # write, an older schema. problem_from_dict indexes directly, so this
+        # would otherwise surface as an uncaught KeyError — a traceback and
+        # exit 1, where the contract says exit 2 with a message.
+        print(
+            f"error: {path} is not a valid problem file ({exc!r})",
+            file=sys.stderr,
+        )
+        return 2
+
     result = solve(
         problem,
         time_limit_s=args.time_limit,

@@ -3885,7 +3885,7 @@ def test_round_tripped_problem_still_solves_and_verifies():
     restored = problem_from_dict(
         json.loads(json.dumps(problem_to_dict(original)))
     )
-    result = solve(restored, seed=1, workers=1, time_limit_s=120.0)
+    result = solve(restored, seed=1, workers=1, time_limit_s=30.0)
     assert result.status in (SolveStatus.OPTIMAL, SolveStatus.FEASIBLE)
     assert verify(restored, result.schedule) == []
 
@@ -3899,7 +3899,7 @@ def test_blocked_slots_survive_the_round_trip():
 
 
 def test_result_to_dict_is_json_serialisable():
-    result = solve(meridian_problem(), seed=1, workers=1, time_limit_s=120.0)
+    result = solve(meridian_problem(), seed=1, workers=1, time_limit_s=30.0)
     text = json.dumps(result_to_dict(result))
     payload = json.loads(text)
     assert payload["status"] in ("optimal", "feasible")
@@ -3924,7 +3924,7 @@ def test_cli_solves_a_file_and_exits_zero(tmp_path, capsys):
     path = tmp_path / "problem.json"
     path.write_text(json.dumps(problem_to_dict(meridian_problem())))
     code = main(["solve", str(path), "--seed", "1", "--workers", "1",
-                 "--time-limit", "120"])
+                 "--time-limit", "30"])
     assert code == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["status"] in ("optimal", "feasible")
@@ -4230,7 +4230,7 @@ from roster.io import problem_to_dict
 from tests.fixtures.meridian import meridian_problem
 open("/tmp/meridian.json", "w").write(json.dumps(problem_to_dict(meridian_problem())))
 PY
-python -m roster.cli solve /tmp/meridian.json --seed 1 --workers 1 --time-limit 120 | head -20
+python -m roster.cli solve /tmp/meridian.json --seed 1 --workers 1 --time-limit 30 | head -20
 ```
 Expected: full suite PASS; the CLI prints `"status": "optimal"` (or
 `"feasible"` if the time limit bites first) and a `"doublesCeiling"` of 171.

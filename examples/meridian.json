@@ -1,0 +1,789 @@
+{
+  "grades": [
+    4,
+    5,
+    6,
+    7
+  ],
+  "sections": [
+    "A",
+    "B",
+    "C"
+  ],
+  "subjects": [
+    {
+      "code": "HL",
+      "displayName": "Afrikaans",
+      "isCore": true,
+      "isOptional": false
+    },
+    {
+      "code": "FAL",
+      "displayName": "English",
+      "isCore": true,
+      "isOptional": false
+    },
+    {
+      "code": "MATH",
+      "displayName": "Mathematics",
+      "isCore": true,
+      "isOptional": false
+    },
+    {
+      "code": "NST",
+      "displayName": "Natural Sciences & Technology",
+      "isCore": false,
+      "isOptional": false
+    },
+    {
+      "code": "NS",
+      "displayName": "Natural Sciences",
+      "isCore": false,
+      "isOptional": false
+    },
+    {
+      "code": "TEC",
+      "displayName": "Technology",
+      "isCore": false,
+      "isOptional": false
+    },
+    {
+      "code": "SS",
+      "displayName": "Social Sciences",
+      "isCore": false,
+      "isOptional": false
+    },
+    {
+      "code": "LS",
+      "displayName": "Life Skills",
+      "isCore": false,
+      "isOptional": false
+    },
+    {
+      "code": "LO",
+      "displayName": "Life Orientation",
+      "isCore": false,
+      "isOptional": false
+    },
+    {
+      "code": "CA",
+      "displayName": "Creative Arts",
+      "isCore": false,
+      "isOptional": false
+    },
+    {
+      "code": "EMS",
+      "displayName": "Economic & Management Sciences",
+      "isCore": false,
+      "isOptional": false
+    },
+    {
+      "code": "SPT",
+      "displayName": "Physical Education",
+      "isCore": false,
+      "isOptional": false
+    },
+    {
+      "code": "BIB",
+      "displayName": "Bible Education",
+      "isCore": false,
+      "isOptional": true
+    },
+    {
+      "code": "SEP",
+      "displayName": "Sepedi",
+      "isCore": false,
+      "isOptional": true
+    },
+    {
+      "code": "STUDY",
+      "displayName": "Study",
+      "isCore": false,
+      "isOptional": false
+    }
+  ],
+  "teachers": [
+    {
+      "id": "Nanri",
+      "name": "Nanri",
+      "blockedSlots": []
+    },
+    {
+      "id": "Nelmarie",
+      "name": "Nelmarie",
+      "blockedSlots": []
+    },
+    {
+      "id": "Tanya",
+      "name": "Tanya",
+      "blockedSlots": []
+    },
+    {
+      "id": "Carlien",
+      "name": "Carlien",
+      "blockedSlots": []
+    },
+    {
+      "id": "Christa",
+      "name": "Christa",
+      "blockedSlots": []
+    },
+    {
+      "id": "Shane",
+      "name": "Shane",
+      "blockedSlots": []
+    },
+    {
+      "id": "Karin",
+      "name": "Karin",
+      "blockedSlots": []
+    },
+    {
+      "id": "Handri",
+      "name": "Handri",
+      "blockedSlots": []
+    },
+    {
+      "id": "Marius",
+      "name": "Marius",
+      "blockedSlots": []
+    },
+    {
+      "id": "Sanet",
+      "name": "Sanet",
+      "blockedSlots": []
+    },
+    {
+      "id": "Petra",
+      "name": "Petra",
+      "blockedSlots": []
+    },
+    {
+      "id": "Corlie",
+      "name": "Corlie",
+      "blockedSlots": []
+    },
+    {
+      "id": "Riana",
+      "name": "Riana",
+      "blockedSlots": []
+    },
+    {
+      "id": "Chrissie",
+      "name": "Chrissie",
+      "blockedSlots": []
+    }
+  ],
+  "scenario": {
+    "caps": [
+      {
+        "grade": 4,
+        "subject": "HL",
+        "periods": 12
+      },
+      {
+        "grade": 4,
+        "subject": "FAL",
+        "periods": 10
+      },
+      {
+        "grade": 4,
+        "subject": "MATH",
+        "periods": 12
+      },
+      {
+        "grade": 4,
+        "subject": "NST",
+        "periods": 7
+      },
+      {
+        "grade": 4,
+        "subject": "SS",
+        "periods": 6
+      },
+      {
+        "grade": 4,
+        "subject": "LS",
+        "periods": 6
+      },
+      {
+        "grade": 4,
+        "subject": "SPT",
+        "periods": 2
+      },
+      {
+        "grade": 5,
+        "subject": "HL",
+        "periods": 12
+      },
+      {
+        "grade": 5,
+        "subject": "FAL",
+        "periods": 10
+      },
+      {
+        "grade": 5,
+        "subject": "MATH",
+        "periods": 12
+      },
+      {
+        "grade": 5,
+        "subject": "NST",
+        "periods": 7
+      },
+      {
+        "grade": 5,
+        "subject": "SS",
+        "periods": 6
+      },
+      {
+        "grade": 5,
+        "subject": "LS",
+        "periods": 6
+      },
+      {
+        "grade": 5,
+        "subject": "SPT",
+        "periods": 2
+      },
+      {
+        "grade": 6,
+        "subject": "HL",
+        "periods": 12
+      },
+      {
+        "grade": 6,
+        "subject": "FAL",
+        "periods": 10
+      },
+      {
+        "grade": 6,
+        "subject": "MATH",
+        "periods": 12
+      },
+      {
+        "grade": 6,
+        "subject": "NST",
+        "periods": 7
+      },
+      {
+        "grade": 6,
+        "subject": "SS",
+        "periods": 6
+      },
+      {
+        "grade": 6,
+        "subject": "LS",
+        "periods": 6
+      },
+      {
+        "grade": 6,
+        "subject": "SPT",
+        "periods": 2
+      },
+      {
+        "grade": 7,
+        "subject": "HL",
+        "periods": 10
+      },
+      {
+        "grade": 7,
+        "subject": "FAL",
+        "periods": 8
+      },
+      {
+        "grade": 7,
+        "subject": "MATH",
+        "periods": 9
+      },
+      {
+        "grade": 7,
+        "subject": "NS",
+        "periods": 6
+      },
+      {
+        "grade": 7,
+        "subject": "SS",
+        "periods": 6
+      },
+      {
+        "grade": 7,
+        "subject": "TEC",
+        "periods": 4
+      },
+      {
+        "grade": 7,
+        "subject": "EMS",
+        "periods": 4
+      },
+      {
+        "grade": 7,
+        "subject": "LO",
+        "periods": 4
+      },
+      {
+        "grade": 7,
+        "subject": "CA",
+        "periods": 4
+      }
+    ],
+    "optional": [
+      {
+        "grade": 4,
+        "subject": "BIB",
+        "periods": 3
+      },
+      {
+        "grade": 5,
+        "subject": "BIB",
+        "periods": 4
+      },
+      {
+        "grade": 6,
+        "subject": "BIB",
+        "periods": 3
+      },
+      {
+        "grade": 7,
+        "subject": "BIB",
+        "periods": 3
+      },
+      {
+        "grade": 4,
+        "subject": "SEP",
+        "periods": 3
+      },
+      {
+        "grade": 7,
+        "subject": "SPT",
+        "periods": 2
+      }
+    ],
+    "enabledOptional": [
+      "BIB",
+      "SPT"
+    ],
+    "overrides": [],
+    "minDoubles": []
+  },
+  "blocks": [
+    {
+      "teacherId": "Christa",
+      "grade": 4,
+      "subject": "HL",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 12
+    },
+    {
+      "teacherId": "Nelmarie",
+      "grade": 4,
+      "subject": "FAL",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 10
+    },
+    {
+      "teacherId": "Handri",
+      "grade": 4,
+      "subject": "MATH",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 12
+    },
+    {
+      "teacherId": "Chrissie",
+      "grade": 4,
+      "subject": "NST",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 7
+    },
+    {
+      "teacherId": "Marius",
+      "grade": 4,
+      "subject": "SS",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 6
+    },
+    {
+      "teacherId": "Corlie",
+      "grade": 4,
+      "subject": "LS",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 6
+    },
+    {
+      "teacherId": "Nelmarie",
+      "grade": 4,
+      "subject": "SPT",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 2
+    },
+    {
+      "teacherId": "Karin",
+      "grade": 4,
+      "subject": "BIB",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 3
+    },
+    {
+      "teacherId": "Karin",
+      "grade": 4,
+      "subject": "STUDY",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 2
+    },
+    {
+      "teacherId": "Petra",
+      "grade": 5,
+      "subject": "HL",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 12
+    },
+    {
+      "teacherId": "Nanri",
+      "grade": 5,
+      "subject": "FAL",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 10
+    },
+    {
+      "teacherId": "Sanet",
+      "grade": 5,
+      "subject": "MATH",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 12
+    },
+    {
+      "teacherId": "Riana",
+      "grade": 5,
+      "subject": "NST",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 7
+    },
+    {
+      "teacherId": "Nelmarie",
+      "grade": 5,
+      "subject": "SS",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 6
+    },
+    {
+      "teacherId": "Handri",
+      "grade": 5,
+      "subject": "LS",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 6
+    },
+    {
+      "teacherId": "Nanri",
+      "grade": 5,
+      "subject": "SPT",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 2
+    },
+    {
+      "teacherId": "Shane",
+      "grade": 5,
+      "subject": "BIB",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 4
+    },
+    {
+      "teacherId": "Shane",
+      "grade": 5,
+      "subject": "STUDY",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 1
+    },
+    {
+      "teacherId": "Corlie",
+      "grade": 6,
+      "subject": "HL",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 12
+    },
+    {
+      "teacherId": "Chrissie",
+      "grade": 6,
+      "subject": "FAL",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 10
+    },
+    {
+      "teacherId": "Marius",
+      "grade": 6,
+      "subject": "MATH",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 12
+    },
+    {
+      "teacherId": "Tanya",
+      "grade": 6,
+      "subject": "NST",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 7
+    },
+    {
+      "teacherId": "Nanri",
+      "grade": 6,
+      "subject": "SS",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 6
+    },
+    {
+      "teacherId": "Sanet",
+      "grade": 6,
+      "subject": "LS",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 6
+    },
+    {
+      "teacherId": "Tanya",
+      "grade": 6,
+      "subject": "SPT",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 2
+    },
+    {
+      "teacherId": "Shane",
+      "grade": 6,
+      "subject": "BIB",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 3
+    },
+    {
+      "teacherId": "Shane",
+      "grade": 6,
+      "subject": "STUDY",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 2
+    },
+    {
+      "teacherId": "Riana",
+      "grade": 7,
+      "subject": "HL",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 10
+    },
+    {
+      "teacherId": "Carlien",
+      "grade": 7,
+      "subject": "FAL",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 8
+    },
+    {
+      "teacherId": "Tanya",
+      "grade": 7,
+      "subject": "MATH",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 9
+    },
+    {
+      "teacherId": "Christa",
+      "grade": 7,
+      "subject": "NS",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 6
+    },
+    {
+      "teacherId": "Petra",
+      "grade": 7,
+      "subject": "SS",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 6
+    },
+    {
+      "teacherId": "Carlien",
+      "grade": 7,
+      "subject": "TEC",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 4
+    },
+    {
+      "teacherId": "Carlien",
+      "grade": 7,
+      "subject": "EMS",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 4
+    },
+    {
+      "teacherId": "Karin",
+      "grade": 7,
+      "subject": "LO",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 4
+    },
+    {
+      "teacherId": "Karin",
+      "grade": 7,
+      "subject": "CA",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 4
+    },
+    {
+      "teacherId": "Shane",
+      "grade": 7,
+      "subject": "BIB",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 3
+    },
+    {
+      "teacherId": "Carlien",
+      "grade": 7,
+      "subject": "SPT",
+      "sections": [
+        "A",
+        "B",
+        "C"
+      ],
+      "periodsPerClass": 2
+    }
+  ]
+}

@@ -82,7 +82,14 @@ def test_verifier_does_not_depend_on_the_solver():
     and a comment mentioning ortools is not a dependency.
     """
     import ast
-    import roster.verify as module
+    import importlib
+
+    # importlib.import_module, NOT `import roster.verify as module`.
+    # roster/__init__.py exports the verify FUNCTION at package level, which
+    # rebinds the `roster.verify` attribute on the package from the submodule
+    # to that function — so the plain import form yields a function with no
+    # __file__. sys.modules still holds the real module; ask for it.
+    module = importlib.import_module("roster.verify")
 
     tree = ast.parse(open(module.__file__, encoding="utf-8").read())
     imported: set[str] = set()

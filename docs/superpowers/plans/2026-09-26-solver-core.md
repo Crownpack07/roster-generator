@@ -3383,7 +3383,7 @@ def test_explain_produces_one_sentence_per_rule_group():
 def test_explain_offers_at_least_one_remedy():
     problem = meridian_problem(min_doubles={(4, "FAL"): 6})
     result = solve(
-        problem, run_preflight=False, seed=1, workers=1, time_limit_s=120.0
+        problem, run_preflight=False, seed=1, workers=1, time_limit_s=30.0
     )
     assert result.status is SolveStatus.INFEASIBLE
     assert result.conflict is not None
@@ -3413,9 +3413,14 @@ def test_explain_returns_empty_report_for_a_feasible_model():
     problem = meridian_problem()
     built = build(problem)
     solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = 120.0
+    # 30s, not 120s: CP-SAT spends its whole budget proving optimality even
+    # after it has an answer, and this solve only needs to reach a feasible
+    # model so explain() has something non-infeasible to look at. Measured
+    # first solution on this fixture is ~10.5s with linearization disabled.
+    solver.parameters.max_time_in_seconds = 30.0
     solver.parameters.num_search_workers = 1
     solver.parameters.random_seed = 1
+    solver.parameters.linearization_level = 0
     solver.Solve(built.model)
     report = explain(problem, built, solver)
     assert report.rule_groups == ()

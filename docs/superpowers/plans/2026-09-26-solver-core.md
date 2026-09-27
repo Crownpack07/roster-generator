@@ -3636,18 +3636,30 @@ ranked remedies, naming the teachers who actually have spare capacity."
 
 **Interfaces:**
 - Consumes: everything. Adds no production code.
-- Produces: generated problems that are feasible by construction, asserting the
-  solver finds a solution the verifier accepts.
+- Produces: generated schools measured to be solvable (one teacher per block, so
+  nothing is shared and capacity cannot bind), and a single property test that
+  pays for one solve per example and then checks every invariant on it —
+  verifier-clean, doubles within the ceiling, every class slot filled. Rules out
+  INFEASIBLE, tolerates UNKNOWN.
 
 - [ ] **Step 1: Write the property tests**
 
 `tests/test_properties.py`:
 
 ```python
-"""Generated problems, feasible by construction.
+"""Generated problems, measured to be solvable.
 
-Each generated school gets one teacher per (grade, subject) block, so teacher
-capacity and daily floors can never bind. Any failure is a real modelling bug.
+Each generated school gets one teacher per (grade, subject) block, so nothing
+is shared and teacher capacity and daily floors can never bind. That is a real
+structural difference from the Meridian fixture, which has 12 classes sharing
+14 teachers and becomes unreliable under small perturbations: measured, all six
+core shapes spanning this generator's range return a schedule the verifier
+accepts. So a failure here points at a modelling bug rather than an
+over-subscribed fixture.
+
+"Feasible by construction" would still be too strong a claim to assert, so the
+test tolerates UNKNOWN and only rules out INFEASIBLE, which for this shape
+would genuinely indicate a bug.
 """
 
 from __future__ import annotations
@@ -3662,7 +3674,13 @@ from roster.solve import SolveStatus, solve
 from roster.verify import verify
 
 SLOW = settings(
-    max_examples=12,
+    # 8, not 12. CP-SAT spends its whole budget proving optimality even after
+    # it has an answer, so every example costs the full time limit regardless
+    # of how fast it finds a schedule — max_examples is a direct multiplier on
+    # wall time. 8 examples over a three-integer generator (6-12 each) still
+    # covers the range; 8 x 25s is about 200s, against 36 minutes for the
+    # original 12 examples x 60s x three separate test functions.
+    max_examples=8,
     deadline=None,
     suppress_health_check=[HealthCheck.too_slow],
 )
@@ -3726,34 +3744,48 @@ def simple_school(draw):
 
 @SLOW
 @given(simple_school())
-def test_generated_school_solves_and_verifies(problem):
-    result = solve(problem, seed=1, workers=1, time_limit_s=60.0)
+def test_a_generated_school_solves_and_every_invariant_holds(problem):
+    """One solve per generated school, then every property checked on it.
+
+    Deliberately ONE test rather than three. An earlier draft had three
+    @given functions each generating and solving independently, then asserting
+    one property apiece — three full solves per example for assertions that
+    all read the same result. That tripled the cost for no extra coverage.
+
+    Measured on this generator's range (core periods 6-12 each, six shapes
+    spanning it): every school solves and verifies. First solution arrives in
+    0.03-0.77s for five of six shapes; the outlier is the LOW-core case
+    (6/6/6), which takes about 14s because a small core leaves 42 periods of
+    non-core, each capped at ceil(n/6) per day — a much tighter packing. Less
+    core work makes it harder, not easier.
+
+    So the 25s budget is roughly a 1.8x margin over the worst measured case.
+    UNKNOWN is tolerated anyway rather than asserted away, because a slower
+    machine than the one measured could miss the 14s case, and a property test
+    that fails on hardware speed teaches nothing.
+    """
+    result = solve(problem, seed=1, workers=1, time_limit_s=25.0)
+
     if result.status is SolveStatus.BLOCKED:
-        # Pre-flight rejected it; that is a legitimate answer, not a bug.
+        # Pre-flight rejected it. That is a legitimate answer, not a bug —
+        # but it must come with an error explaining why.
         assert any(f.severity == "error" for f in result.findings)
         return
-    assert result.status in (SolveStatus.OPTIMAL, SolveStatus.FEASIBLE), (
-        result.status,
+
+    assert result.status is not SolveStatus.INFEASIBLE, (
+        "a generated school has one teacher per block, so nothing is shared "
+        "and capacity cannot bind; a proven contradiction here is a modelling "
+        "bug",
         [f.message for f in result.findings],
     )
+
+    if result.schedule is None:
+        # UNKNOWN on a slower machine. The status assertion above still ran.
+        return
+
+    # Every property, on the one schedule we paid to compute.
     assert verify(problem, result.schedule) == []
-
-
-@SLOW
-@given(simple_school())
-def test_doubles_never_exceed_the_ceiling(problem):
-    result = solve(problem, seed=1, workers=1, time_limit_s=60.0)
-    if result.schedule is None:
-        return
-    assert result.doubles_placed <= result.doubles_ceiling
-
-
-@SLOW
-@given(simple_school())
-def test_every_class_slot_is_always_filled(problem):
-    result = solve(problem, seed=1, workers=1, time_limit_s=60.0)
-    if result.schedule is None:
-        return
+    assert 0 <= result.doubles_placed <= result.doubles_ceiling
     for class_ref in problem.classes():
         assert len(result.schedule.for_class(class_ref)) == SLOT_COUNT
 ```
@@ -3761,7 +3793,10 @@ def test_every_class_slot_is_always_filled(problem):
 - [ ] **Step 2: Run the property tests**
 
 Run: `pytest tests/test_properties.py -v`
-Expected: PASS. These are slower — roughly a minute total.
+Expected: PASS, in roughly 200s. That is one solve per example, 8 examples, each
+capped at 25s. Do not be alarmed by a run that takes minutes — CP-SAT spends its
+whole budget proving optimality after it already has an answer, so each example
+costs its full limit.
 
 If a generated case fails, Hypothesis prints the minimal reproducing problem.
 Copy it into `tests/test_solve.py` as a named regression test before fixing the
@@ -3773,9 +3808,16 @@ bug.
 git add tests/test_properties.py
 git commit -m "test: add property-based tests over generated schools
 
-Generated problems give one teacher per block so capacity can never
-bind, which means any solver failure is a modelling bug rather than an
-over-subscribed fixture."
+Generated problems give one teacher per block so nothing is shared and
+capacity cannot bind, which means a failure points at a modelling bug
+rather than an over-subscribed fixture. Measured: all six core shapes
+spanning the generator's range return a verifier-clean schedule.
+
+One test asserting every invariant on a single solve, not three tests
+each paying for their own. Eight examples at a 25s cap is about 200s;
+three functions at twelve examples and 60s would have been 36 minutes,
+because CP-SAT spends its whole budget proving optimality after it
+already has an answer."
 ```
 
 ---

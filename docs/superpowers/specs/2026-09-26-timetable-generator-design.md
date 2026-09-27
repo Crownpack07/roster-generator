@@ -594,6 +594,20 @@ Then, in order:
    suite. Export tests assert the file generates and contains the expected cell
    count, not pixel comparison.
 
+**Solver tests are separated from unit tests.** CP-SAT spends its entire time
+budget proving optimality even after it has an answer, so every solving test
+costs its full limit — together about 13 minutes, far too slow to run after each
+change. Anything driving the solver carries `@pytest.mark.solver`, and the
+default `pytest` run excludes them:
+
+    pytest              fast unit tests only (~2s, 104 tests)
+    pytest -m solver    the slow solver tests (~13 min, 35 tests)
+    pytest -m ""        everything, at a phase boundary or before a release
+
+Treat the solver set as an integration suite run at phase boundaries, not a unit
+suite run per task. Phase 1 was executed before this split existed, and the
+13-minute cycle was the direct cause of most of its execution failures.
+
 **Determinism:** CP-SAT searches on multiple threads by default, so the same
 problem can return different but equally valid timetables per run, and any test
 asserting an exact schedule flakes.

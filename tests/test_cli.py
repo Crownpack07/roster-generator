@@ -1,3 +1,5 @@
+import pytest
+
 import json
 
 from roster.cli import main
@@ -17,6 +19,7 @@ def test_problem_survives_a_json_round_trip():
     assert len(restored.blocks) == len(original.blocks)
 
 
+@pytest.mark.solver
 def test_round_tripped_problem_still_solves_and_verifies():
     original = meridian_problem()
     restored = problem_from_dict(
@@ -35,6 +38,7 @@ def test_blocked_slots_survive_the_round_trip():
     assert restored.teachers["Petra"].blocked_slots == frozenset({10, 11})
 
 
+@pytest.mark.solver
 def test_result_to_dict_is_json_serialisable():
     result = solve(meridian_problem(), seed=1, workers=1, time_limit_s=30.0)
     text = json.dumps(result_to_dict(result))
@@ -44,6 +48,7 @@ def test_result_to_dict_is_json_serialisable():
     assert len(payload["placements"]) == 720
 
 
+@pytest.mark.solver
 def test_result_to_dict_carries_findings_and_conflict_keys():
     result = solve(
         meridian_problem(enabled_optional=("BIB", "SEP", "SPT")),
@@ -57,6 +62,7 @@ def test_result_to_dict_carries_findings_and_conflict_keys():
     assert payload["conflict"] is None
 
 
+@pytest.mark.solver
 def test_cli_solves_a_file_and_exits_zero(tmp_path, capsys):
     path = tmp_path / "problem.json"
     path.write_text(json.dumps(problem_to_dict(meridian_problem())))
@@ -67,6 +73,7 @@ def test_cli_solves_a_file_and_exits_zero(tmp_path, capsys):
     assert payload["status"] in ("optimal", "feasible")
 
 
+@pytest.mark.solver
 def test_cli_exits_one_when_preflight_blocks(tmp_path, capsys):
     problem = meridian_problem(enabled_optional=("BIB", "SEP", "SPT"))
     path = tmp_path / "problem.json"
@@ -126,6 +133,7 @@ def test_overrides_and_min_doubles_survive_the_round_trip():
     assert plain.scenario.min_doubles == {}
 
 
+@pytest.mark.solver
 def test_result_to_dict_serialises_a_populated_conflict():
     """The conflict branch, which every other test leaves as None.
 

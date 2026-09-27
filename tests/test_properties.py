@@ -15,6 +15,8 @@ would genuinely indicate a bug.
 
 from __future__ import annotations
 
+import pytest
+
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
@@ -35,6 +37,12 @@ SLOW = settings(
     deadline=None,
     suppress_health_check=[HealthCheck.too_slow],
 )
+
+# Every test in this module drives the CP-SAT solver, so each costs its
+# full time budget. Excluded from the default `pytest` run — see the
+# markers config in pyproject.toml. Run with `pytest -m solver`.
+pytestmark = pytest.mark.solver
+
 
 
 @st.composite

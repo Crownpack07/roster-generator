@@ -10,7 +10,18 @@ dev = ["pytest>=8.0", "hypothesis>=6.100"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# The default run EXCLUDES solver tests. CP-SAT spends its entire time budget
+# proving optimality even after it has an answer, so every solving test costs
+# its full limit — together they take about 13 minutes, which is too slow to
+# run after each change. Unit work gets a seconds-long cycle instead.
+#
+#   pytest                 fast unit tests only (the default)
+#   pytest -m solver       only the slow solver tests
+#   pytest -m ""           everything, for a phase boundary or a release
+addopts = "-q -m 'not solver'"
+markers = [
+    "solver: drives the CP-SAT solver; slow (seconds to minutes each). Run at phase boundaries, not after every task.",
+]
 
 [build-system]
 requires = ["setuptools>=68"]

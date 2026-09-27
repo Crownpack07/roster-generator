@@ -1,9 +1,17 @@
+import pytest
+
 from ortools.sat.python import cp_model
 
 from roster.diagnose import RULE_SENTENCES, ConflictReport, explain, remedies_for
 from roster.model import ALL_RULES, RULE_CORE_DAILY, RULE_MIN_DOUBLES, build
 from roster.solve import SolveStatus, solve
 from tests.fixtures.meridian import meridian_problem
+
+# Every test in this module drives the CP-SAT solver, so each costs its
+# full time budget. Excluded from the default `pytest` run — see the
+# markers config in pyproject.toml. Run with `pytest -m solver`.
+pytestmark = pytest.mark.solver
+
 
 
 def test_every_rule_group_has_an_english_sentence():

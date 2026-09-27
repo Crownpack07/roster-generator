@@ -1,3 +1,5 @@
+import pytest
+
 from ortools.sat.python import cp_model
 
 from roster.domain import SLOT_COUNT, ClassRef
@@ -63,6 +65,7 @@ def test_every_rule_group_has_an_assumption_literal():
         assert rule in built.assumptions
 
 
+@pytest.mark.solver
 def test_model_solves_the_real_school_and_the_verifier_agrees():
     problem = meridian_problem()
     built = build(problem)
@@ -72,6 +75,7 @@ def test_model_solves_the_real_school_and_the_verifier_agrees():
     assert verify(problem, schedule) == []
 
 
+@pytest.mark.solver
 def test_every_class_slot_is_filled_exactly_once():
     problem = meridian_problem()
     built = build(problem)
@@ -82,6 +86,7 @@ def test_every_class_slot_is_filled_exactly_once():
         assert len(schedule.for_class(class_ref)) == SLOT_COUNT
 
 
+@pytest.mark.solver
 def test_blocked_slots_are_left_empty_for_that_teacher():
     blocked = frozenset({0, 1, 2})
     problem = meridian_problem(blocked={"Karin": blocked})
@@ -95,6 +100,7 @@ def test_blocked_slots_are_left_empty_for_that_teacher():
             assert p.slot not in blocked
 
 
+@pytest.mark.solver
 def test_teacher_never_appears_twice_in_one_slot():
     problem = meridian_problem()
     built = build(problem)
@@ -109,6 +115,7 @@ def test_teacher_never_appears_twice_in_one_slot():
         seen.add(key)
 
 
+@pytest.mark.solver
 def test_schedule_from_returns_only_selected_variables():
     problem = meridian_problem()
     built = build(problem)
@@ -157,6 +164,7 @@ def test_total_doubles_ceiling_matches_the_spec_table():
     assert total_doubles_ceiling(problem) == 16 * 9 + 9 * 3
 
 
+@pytest.mark.solver
 def test_core_subjects_appear_once_or_twice_every_day():
     problem = meridian_problem()
     built = build(problem)
@@ -173,6 +181,7 @@ def test_core_subjects_appear_once_or_twice_every_day():
             assert all(1 <= n <= 2 for n in per_day), (class_ref, code, per_day)
 
 
+@pytest.mark.solver
 def test_non_core_respects_its_daily_cap():
     problem = meridian_problem()
     built = build(problem)
@@ -181,6 +190,7 @@ def test_non_core_respects_its_daily_cap():
     assert verify(problem, schedule) == []
 
 
+@pytest.mark.solver
 def test_model_and_verifier_agree_on_the_doubles_count():
     """The objective value and the independent count must match exactly.
 
@@ -199,6 +209,7 @@ def test_model_and_verifier_agree_on_the_doubles_count():
     assert 0 < placed <= total_doubles_ceiling(problem)
 
 
+@pytest.mark.solver
 def test_min_doubles_is_honoured_when_set():
     """A minimum below the ceiling is enforced.
 

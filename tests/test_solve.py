@@ -5,6 +5,12 @@ from roster.solve import SolveResult, SolveStatus, solve
 from roster.verify import verify
 from tests.fixtures.meridian import meridian_problem
 
+# Every test in this module drives the CP-SAT solver, so each costs its
+# full time budget. Excluded from the default `pytest` run — see the
+# markers config in pyproject.toml. Run with `pytest -m solver`.
+pytestmark = pytest.mark.solver
+
+
 SOLVE_KWARGS = {"seed": 1, "workers": 1, "time_limit_s": 30.0}
 
 

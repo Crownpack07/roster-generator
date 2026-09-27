@@ -1,5 +1,15 @@
 # Solver Core Implementation Plan (Phase 1 of 4)
 
+> **STATUS: COMPLETE.** All twelve tasks implemented and individually reviewed.
+> 139 tests pass (104 fast, 35 solver-marked). The whole-branch review was
+> dispatched twice and killed by rate limits both times — see
+> `../phase-2-handoff.md`, which also records the three spec claims measurement
+> disproved during execution, twenty-one deferred findings, and the process
+> lessons. **Read that handoff before planning Phase 2.**
+>
+> This plan was corrected repeatedly as measurement invalidated its assumptions;
+> the code blocks below reflect the final state, not what was first written.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A pure-Python library plus CLI that takes a school's curriculum, teachers and teacher↔subject assignment and produces a verified clash-free 6-day timetable — or a named, explained proof that none exists.

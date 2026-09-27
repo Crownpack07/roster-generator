@@ -336,9 +336,31 @@ explains them better than any solver can.
 ### 7.2 Layer 2 — solver conflict report
 
 Each group of constraints carries an assumption literal. On infeasibility CP-SAT
-returns the minimal set of literals that cannot all hold, which is translated
-into sentences naming the specific blocks, teachers and grades involved, plus a
-ranked list of the smallest changes that would restore feasibility.
+returns a set of those literals sufficient to prove the contradiction, which is
+translated into one sentence per rule group plus a ranked list of changes that
+would restore feasibility. The remedies carry the specifics — the teacher, the
+grade, the subject, the exact setting and who has spare capacity.
+
+**This layer is coarser than an earlier draft of this section claimed.** That
+draft said CP-SAT returns "the minimal set of literals", and that the sentences
+name the specific blocks and teachers involved. Both were wrong:
+
+- OR-Tools makes no minimality guarantee — the method is
+  `sufficient_assumptions_for_infeasibility`, and returns *a* sufficient core.
+- More fundamentally, **the model registers one literal per rule *category*, not
+  per constraint instance** — seven in total, each gating its whole category
+  across every class. There is very little for a core to shrink to. Measured: an
+  infeasible scenario whose sole cause was a double-period minimum above its
+  achievable ceiling returned **all seven** groups.
+- So the sentences describe rule categories generically; only the remedies name
+  instances.
+
+When the returned core covers every rule group, the report says so rather than
+implying seven separate conflicts. Narrowing this — re-solving iteratively while
+dropping one assumption at a time, or registering finer-grained literals — is
+scoped as separate work: it costs up to seven extra solves at roughly ten
+seconds each, which is a real trade against a diagnosis that is already
+correct-first in its remedy ordering.
 
 Layer 2 exists for structural conflicts arithmetic cannot see — for example:
 grade 6's core doubles consume periods 1–6; a teacher's grade 4 block pins her to

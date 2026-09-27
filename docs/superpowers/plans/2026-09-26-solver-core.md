@@ -3944,6 +3944,70 @@ def test_cli_rejects_a_missing_file(tmp_path, capsys):
     code = main(["solve", str(tmp_path / "nope.json")])
     assert code == 2
     assert "not found" in capsys.readouterr().err
+
+
+def test_cli_rejects_a_structurally_invalid_problem_file(tmp_path, capsys):
+    """Valid JSON, wrong shape: exit 2 with a message, never a traceback.
+
+    Distinct from both a missing file and unparseable JSON. A hand-edited or
+    truncated problem file lands here, and `problem_from_dict` indexes keys
+    directly, so without a guard this surfaces as an uncaught KeyError.
+    """
+    path = tmp_path / "bad.json"
+    path.write_text(json.dumps({"grades": [4], "sections": ["A"]}))
+    code = main(["solve", str(path)])
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "not a valid problem file" in err
+    assert "Traceback" not in err
+
+
+def test_overrides_and_min_doubles_survive_the_round_trip():
+    """The highest-risk fields in the whole serialisation layer.
+
+    Both are dicts keyed by a `(grade, subject_code)` TUPLE, and JSON cannot
+    express a tuple key at all — they serialise as lists of objects and must be
+    reassembled on the way back. Every other test here leaves both dicts empty,
+    so without this one the transform is only ever exercised on the empty case.
+    Phase 2's API serves this shape, and a key that fails to reassemble would
+    silently discard a school's deliberate curriculum overrides.
+    """
+    original = meridian_problem(
+        overrides={(4, "SS"): 5, (7, "HL"): 9},
+        min_doubles={(4, "HL"): 4, (5, "MATH"): 3},
+    )
+    restored = problem_from_dict(
+        json.loads(json.dumps(problem_to_dict(original)))
+    )
+    assert restored.scenario.overrides == {(4, "SS"): 5, (7, "HL"): 9}
+    assert restored.scenario.min_doubles == {(4, "HL"): 4, (5, "MATH"): 3}
+    # Empty dicts must come back empty, not as something falsy-but-different.
+    plain = problem_from_dict(
+        json.loads(json.dumps(problem_to_dict(meridian_problem())))
+    )
+    assert plain.scenario.overrides == {}
+    assert plain.scenario.min_doubles == {}
+
+
+def test_result_to_dict_serialises_a_populated_conflict():
+    """The conflict branch, which every other test leaves as None.
+
+    A minimum above the achievable ceiling is proven INFEASIBLE — grade 4 FAL
+    has 10 periods, so its doubles ceiling is 4 and a minimum of 6 cannot hold.
+    That is what populates the report.
+    """
+    problem = meridian_problem(min_doubles={(4, "FAL"): 6})
+    result = solve(
+        problem, run_preflight=False, seed=1, workers=1, time_limit_s=30.0
+    )
+    assert result.status is SolveStatus.INFEASIBLE
+    payload = json.loads(json.dumps(result_to_dict(result)))
+    assert payload["status"] == "infeasible"
+    assert payload["placements"] == []
+    assert payload["conflict"] is not None
+    assert payload["conflict"]["ruleGroups"]
+    assert payload["conflict"]["sentences"]
+    assert payload["conflict"]["remedies"]
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -4154,7 +4218,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {path} is not valid JSON ({exc})", file=sys.stderr)
         return 2
 
-    problem = problem_from_dict(data)
+    try:
+        problem = problem_from_dict(data)
+    except (KeyError, TypeError, ValueError) as exc:
+        # Valid JSON, wrong shape: a missing or misspelled key, a truncated
+        # write, an older schema. problem_from_dict indexes directly, so this
+        # would otherwise surface as an uncaught KeyError — a traceback and
+        # exit 1, where the contract says exit 2 with a message.
+        print(
+            f"error: {path} is not a valid problem file ({exc!r})",
+            file=sys.stderr,
+        )
+        return 2
+
     result = solve(
         problem,
         time_limit_s=args.time_limit,

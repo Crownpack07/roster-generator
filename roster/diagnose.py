@@ -1,8 +1,15 @@
 """Layer 2: turn an UNSAT core into English sentences and ranked remedies.
 
-Each rule group in the model carries an assumption literal. When the model is
-infeasible, CP-SAT returns the smallest set of those literals that cannot all
-hold. This module maps them back to sentences a person can act on.
+The model registers one assumption literal per rule *category* — seven in
+total (`ALL_RULES`), each guarding its whole category across every class —
+rather than one per individual constraint. When the model is infeasible,
+CP-SAT's `SufficientAssumptionsForInfeasibility()` returns *a* set of those
+literals sufficient to keep the model unsatisfiable, not necessarily the
+smallest conceivable one. Because the literals are this coarse, that set can
+cover every category in the worst case; `explain()` flags that degenerate
+case rather than presenting it as seven independent conflicts. The specifics
+a person can act on live in the ranked remedies below, not in the
+(deliberately category-generic) sentences.
 """
 
 from __future__ import annotations
@@ -11,6 +18,7 @@ from dataclasses import dataclass
 
 from roster.domain import DAYS, PERIODS_PER_DAY, SLOT_COUNT
 from roster.model import (
+    ALL_RULES,
     RULE_BLOCKED_SLOTS,
     RULE_CORE_DAILY,
     RULE_MIN_DOUBLES,
@@ -162,6 +170,13 @@ def explain(problem: Problem, built, solver) -> ConflictReport:
         return ConflictReport()
 
     sentences = tuple(RULE_SENTENCES[g] for g in groups)
+    if len(groups) == len(ALL_RULES):
+        sentences = (
+            "All seven rule groups appear in the conflict, which means the "
+            "solver could not narrow the cause further — treat the remedies "
+            "below as ranked possibilities rather than a diagnosis.",
+        ) + sentences
+
     return ConflictReport(
         rule_groups=groups,
         sentences=sentences,

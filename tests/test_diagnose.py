@@ -35,7 +35,14 @@ def test_explain_produces_one_sentence_per_rule_group():
     solver.parameters.random_seed = 1
     solver.Solve(built.model)
     report = explain(problem, built, solver)
-    assert len(report.sentences) == len(report.rule_groups)
+    # One sentence per rule group, plus one extra leading "degenerate core"
+    # note when the core could not be narrowed below every rule group -
+    # the worst case the model's coarse, one-literal-per-category
+    # assumptions permit.
+    expected = len(report.rule_groups)
+    if len(report.rule_groups) == len(ALL_RULES):
+        expected += 1
+    assert len(report.sentences) == expected
     for sentence in report.sentences:
         assert sentence == sentence.strip()
         assert sentence

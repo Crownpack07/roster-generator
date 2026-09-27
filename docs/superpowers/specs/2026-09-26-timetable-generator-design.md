@@ -473,9 +473,19 @@ changes.
 new scenario rather than mutating one, so "Grade 4 with Sepedi" and "without" both
 exist, both have solutions, and both can be shown side by side.
 
-**Use PyMongo's native async API (`AsyncMongoClient`, PyMongo ≥ 4.9), not Motor**,
-which MongoDB deprecated in 2025. One client instance created in the FastAPI
-lifespan handler and reused, because M0 caps connections.
+**Use PyMongo, never Motor**, which MongoDB deprecated in 2025. One client
+instance created in the FastAPI lifespan handler and reused, because M0 caps
+connections.
+
+> **Superseded during Phase 2 planning.** This section originally specified
+> PyMongo's *native async* API (`AsyncMongoClient`, PyMongo ≥ 4.9). Phase 2 uses
+> the **synchronous `MongoClient`** in FastAPI's threadpool instead, because
+> mongomock — the chosen test double — does not mock `AsyncMongoClient`
+> ([mongomock#916](https://github.com/mongomock/mongomock/issues/916) is open and
+> unimplemented) and its only async path runs through `mongomock_motor`, the very
+> library this section rules out. The decision on record in §16 was to avoid
+> Motor; synchronous PyMongo does that equally. See
+> `2026-09-27-persistence-and-api-design.md` §6.3.
 
 ## 10. Authentication
 
@@ -628,12 +638,16 @@ real administrator `unknown` for the primary use case.
 ## 15. Deferred
 
 - Per-user accounts and roles
-- Background solve jobs
 - Interactive drag-to-adjust editing of a solved timetable
 - Learner-to-class allocation
 - Mid-year amendments and substitute cover
 - Importing the existing spreadsheet (the curriculum is small enough to enter
   once; revisit if more schools onboard)
+
+> **"Background solve jobs" was removed from this list during Phase 2 planning.**
+> It contradicted §8, which measurement changed: solving takes 10.5s to 200s+, so
+> a background job is required from Phase 2's first commit, not deferred. §8 is
+> the corrected text.
 
 ## 16. Key decisions on record
 

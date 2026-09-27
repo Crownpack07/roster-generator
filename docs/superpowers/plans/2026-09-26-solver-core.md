@@ -3005,7 +3005,13 @@ from roster.solve import SolveResult, SolveStatus, solve
 from roster.verify import verify
 from tests.fixtures.meridian import meridian_problem
 
-SOLVE_KWARGS = {"seed": 1, "workers": 1, "time_limit_s": 120.0}
+# 30s, not 120s. CP-SAT SPENDS its whole time budget proving optimality even
+# after it has an answer: measured on this fixture, first solution arrives at
+# 3.9s but a 90s limit still takes the full 90s. Since every assertion here
+# accepts OPTIMAL or FEASIBLE, a generous limit buys nothing and costs minutes
+# of suite time per test. 30s leaves ample margin over the measured 3.9-10.1s
+# first-solution times, which assume solve() disables linearization.
+SOLVE_KWARGS = {"seed": 1, "workers": 1, "time_limit_s": 30.0}
 
 
 def test_the_four_statuses_are_distinct_values():

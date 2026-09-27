@@ -98,6 +98,12 @@ def test_repeated_solves_agree_on_properties_not_on_the_exact_schedule():
     b = solve(problem, **SOLVE_KWARGS)
     assert a.status == b.status
     assert a.doubles_ceiling == b.doubles_ceiling
+    if a.schedule is None and b.schedule is None:
+        pytest.skip(
+            f"neither run found a schedule within "
+            f"{SOLVE_KWARGS['time_limit_s']}s (status {a.status}); the status "
+            f"and ceiling agreement above was still asserted"
+        )
     for result in (a, b):
         if result.schedule is not None:
             assert verify(problem, result.schedule) == []
@@ -120,7 +126,12 @@ def test_blocked_slots_are_respected_when_a_timetable_is_found():
     assert result.status is not SolveStatus.BLOCKED
     assert result.status is not SolveStatus.INFEASIBLE
     if result.schedule is None:
-        return
+        pytest.skip(
+            f"no schedule found within {SOLVE_KWARGS['time_limit_s']}s "
+            f"(status {result.status}); the blocked-slot guarantee itself is "
+            f"asserted unconditionally in tests/test_model.py::"
+            f"test_blocked_slots_are_left_empty_for_that_teacher"
+        )
     assert verify(problem, result.schedule) == []
     for placement in result.schedule.placements:
         block = problem.block_for(placement.class_ref, placement.subject_code)
@@ -146,5 +157,10 @@ def test_sepedi_on_with_an_override_is_accepted():
     ]
     assert result.status is not SolveStatus.INFEASIBLE
     assert any(f.code == "caps_deviation" for f in result.findings)
-    if result.schedule is not None:
-        assert verify(problem, result.schedule) == []
+    if result.schedule is None:
+        pytest.skip(
+            f"no schedule found within {SOLVE_KWARGS['time_limit_s']}s "
+            f"(status {result.status}); the override path reaching the solver "
+            f"and reporting its deviation was still asserted"
+        )
+    assert verify(problem, result.schedule) == []

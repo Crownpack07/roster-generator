@@ -12,9 +12,18 @@ architecture.
 
 ## 1. Phase 1 status
 
-**Twelve tasks, all implemented, each individually reviewed clean.** 139 tests:
-104 fast unit tests (~2s) and 35 solver tests (~13 min), all passing. The branch
-is `worktree-solver-core`, based on `2eefa55`.
+**Twelve tasks, all implemented, each individually reviewed clean.** 139 tests,
+verified after the marker split in both directions:
+
+    pytest            104 passed, 35 deselected, 2.3s
+    pytest -m solver   33 passed,  2 skipped,   ~13 min
+
+The two skips are deliberate and visible: two end-to-end tests in
+`tests/test_solve.py` call `pytest.skip` with a reason when the solver returns
+`unknown` for their scenario, which it does on this hardware. Before that was
+made explicit they reported green while asserting nothing about a schedule.
+
+The branch is `worktree-solver-core`, based on `2eefa55`.
 
 It produces a real, verified timetable for the real school: 720 placements, 167
 of 171 possible double periods, zero teacher clashes, core subjects on every day

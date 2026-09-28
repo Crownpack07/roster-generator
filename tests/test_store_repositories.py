@@ -79,6 +79,14 @@ def test_a_malformed_id_is_not_found_rather_than_a_crash(db, school):
     assert TeacherRepo(db).delete(school.id, "not-an-object-id") is False
 
 
+def test_a_none_id_is_not_found_rather_than_a_random_document(db, school):
+    """ObjectId(None) raises neither InvalidId nor TypeError — it mints a
+    fresh random id. Without an explicit guard, "not found" would hold only
+    by the coincidence of that random id matching nothing.
+    """
+    assert TeacherRepo(db).get(school.id, None) is None
+
+
 def test_a_subject_is_keyed_by_its_code_within_a_school(db, school):
     repo = SubjectRepo(db)
     subject = Subject("MAT", "Mathematics", True, False)
@@ -98,7 +106,7 @@ def test_a_duplicate_subject_code_within_a_school_is_refused(db, school):
     repo = SubjectRepo(db)
     repo.create(school.id, Subject("MAT", "Mathematics", True, False))
 
-    with pytest.raises(DuplicateKeyError):
+    with pytest.raises(DuplicateKeyError, match="already exists in school"):
         repo.create(school.id, Subject("MAT", "Maths again", True, False))
 
 
@@ -107,7 +115,7 @@ def test_a_duplicate_email_is_refused_even_in_a_different_school(db, school):
     other = SchoolRepo(db).create("Other", (4,), ("A",))
     UserRepo(db).create(school.id, "head@meridian.example", "hash")
 
-    with pytest.raises(DuplicateKeyError):
+    with pytest.raises(DuplicateKeyError, match="already has an account"):
         UserRepo(db).create(other.id, "head@meridian.example", "hash")
 
 
@@ -147,6 +155,53 @@ def test_a_scenario_round_trips_its_choices_and_blocks(db, school):
 
     # Read back from the database, not from the returned object.
     assert repo.get(school.id, created.id) == updated
+
+
+def test_cross_tenant_isolation_sweep(db, school):
+    """One sweep across every method not already covered by its own
+    cross-tenant test, so a dropped schoolId filter fails a test instead of
+    surfacing only in review.
+
+    Written as one compact test rather than nine near-identical ones: each
+    sub-block seeds a record under `school`, then proves `other` cannot get,
+    list, update, or delete it, and that `school` still can, unchanged.
+    Covers: UserRepo.get, SubjectRepo.list/update/delete,
+    CurriculumRepo.upsert/list/delete, ScenarioRepo.list/delete.
+    """
+    other = SchoolRepo(db).create("Other", (4,), ("A",))
+
+    # UserRepo.get
+    users = UserRepo(db)
+    user = users.create(school.id, "sweep@meridian.example", "hash")
+    assert users.get(other.id, user.id) is None
+    assert users.get(school.id, user.id) == user
+
+    # SubjectRepo.list / .update / .delete
+    subjects = SubjectRepo(db)
+    subject = subjects.create(school.id, Subject("PHY", "Physics", True, False))
+    assert subjects.list(other.id) == []
+    assert subjects.update(other.id, "PHY", display_name="Hijacked") is None
+    assert subjects.delete(other.id, "PHY") is False
+    assert subjects.get(school.id, "PHY") == subject
+
+    # CurriculumRepo.upsert / .list / .delete
+    curriculum = CurriculumRepo(db)
+    entry = CurriculumEntry(4, "PHY", 6)
+    curriculum.upsert(school.id, "caps", entry)
+    assert curriculum.list(other.id, "caps") == []
+    assert curriculum.delete(other.id, "caps", 4, "PHY") is False
+    # upsert() from `other` must scope its match filter by schoolId too: it
+    # has to create a separate document rather than silently overwrite
+    # `school`'s row for the same (kind, grade, subjectCode).
+    curriculum.upsert(other.id, "caps", CurriculumEntry(4, "PHY", 99))
+    assert curriculum.list(school.id, "caps") == [entry]
+
+    # ScenarioRepo.list / .delete
+    scenarios = ScenarioRepo(db)
+    scenario = scenarios.create(school.id, "Sweep scenario")
+    assert scenarios.list(other.id) == []
+    assert scenarios.delete(other.id, scenario.id) is False
+    assert scenarios.get(school.id, scenario.id) == scenario
 
 
 def test_a_user_is_found_by_email_across_schools(db, school):

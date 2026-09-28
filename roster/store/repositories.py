@@ -40,7 +40,15 @@ class ValidationError(Exception):
 
 
 def _oid(value: str) -> ObjectId | None:
-    """An unparseable id means 'not found', never a 500."""
+    """An unparseable id means 'not found', never a 500.
+
+    Guard falsy input explicitly: ObjectId(None) raises neither InvalidId nor
+    TypeError, it silently mints a fresh random id, which would make a
+    missing id look up as "not found" only by the coincidence of matching no
+    document.
+    """
+    if not value:
+        return None
     try:
         return ObjectId(value)
     except (InvalidId, TypeError):

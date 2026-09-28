@@ -67,8 +67,6 @@ def test_the_package_init_does_not_import_the_store_jobs_or_api_layers():
             imported.add(node.module)
 
     forbidden = {
-        m
-        for m in imported
-        if m.startswith(("roster.store", "roster.jobs", "roster.api"))
+        m for m in imported if m.startswith(FORBIDDEN_ROSTER_PREFIXES)
     }
     assert forbidden == set(), forbidden

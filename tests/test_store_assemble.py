@@ -65,7 +65,15 @@ def test_an_unknown_scenario_is_an_assembly_error(db, seeded):
         assemble_problem(db, school.id, "652000000000000000000000")
 
 
-def test_a_scenario_from_another_school_is_an_assembly_error(db, seeded):
+def test_a_scenario_from_another_school_is_indistinguishable_from_a_missing_one(
+    db, seeded
+):
+    """Assembly inherits ScenarioRepo's tenant filter rather than enforcing it.
+
+    The isolation itself is tested in test_store_repositories.py; what this
+    pins is that assembly surfaces a foreign scenario as "not found" rather
+    than leaking it or failing differently.
+    """
     _, _, scenario = seeded
     other = SchoolRepo(db).create("Other", (4,), ("A",))
     with pytest.raises(AssemblyError, match="scenario"):

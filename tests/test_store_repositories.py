@@ -12,6 +12,7 @@ from roster.store.repositories import (
     TeacherRepo,
     UserRepo,
     ValidationError,
+    _oid,
 )
 
 
@@ -79,10 +80,25 @@ def test_a_malformed_id_is_not_found_rather_than_a_crash(db, school):
     assert TeacherRepo(db).delete(school.id, "not-an-object-id") is False
 
 
-def test_a_none_id_is_not_found_rather_than_a_random_document(db, school):
+def test_oid_of_none_is_not_found_rather_than_a_random_id():
     """ObjectId(None) raises neither InvalidId nor TypeError — it mints a
-    fresh random id. Without an explicit guard, "not found" would hold only
-    by the coincidence of that random id matching nothing.
+    fresh random id. Without an explicit falsy-input guard, `_oid(None)`
+    would return that random id rather than None, and "not found" would
+    hold only by the coincidence of it matching no document.
+
+    This pins the guard directly, unlike a repository-level assertion: a
+    freshly minted random ObjectId will also never collide with anything in
+    a tiny test database, so `TeacherRepo(db).get(school.id, None) is None`
+    would pass whether or not the guard exists. Only calling `_oid` itself
+    can tell the two apart.
+    """
+    assert _oid(None) is None
+
+
+def test_a_none_id_is_not_found_rather_than_a_random_document(db, school):
+    """Integration-level companion to test_oid_of_none_is_not_found_rather_
+    than_a_random_id: confirms the guard's effect is visible through a real
+    repository call, not just at the helper.
     """
     assert TeacherRepo(db).get(school.id, None) is None
 
@@ -182,7 +198,7 @@ def test_cross_tenant_isolation_sweep(db, school):
     assert subjects.list(other.id) == []
     assert subjects.update(other.id, "PHY", display_name="Hijacked") is None
     assert subjects.delete(other.id, "PHY") is False
-    assert subjects.get(school.id, "PHY") == subject
+    assert subjects.list(school.id) == [subject]
 
     # CurriculumRepo.upsert / .list / .delete
     curriculum = CurriculumRepo(db)
@@ -201,7 +217,7 @@ def test_cross_tenant_isolation_sweep(db, school):
     scenario = scenarios.create(school.id, "Sweep scenario")
     assert scenarios.list(other.id) == []
     assert scenarios.delete(other.id, scenario.id) is False
-    assert scenarios.get(school.id, scenario.id) == scenario
+    assert scenarios.list(school.id) == [scenario]
 
 
 def test_a_user_is_found_by_email_across_schools(db, school):

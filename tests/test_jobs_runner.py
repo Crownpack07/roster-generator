@@ -126,13 +126,12 @@ def test_the_snapshot_and_time_limit_are_frozen_on_the_document(db):
 
 
 def test_a_queued_job_can_be_cancelled_and_then_never_runs(db):
-    """Exercises the runner's cancel path, not the database-level guard.
-
-    SolveRunner.cancel also cancels the pending Future, so with a
-    DeferredExecutor the task never starts and mark_running is never called
-    here. The database guard itself — the actual race protection when the
-    pool has already picked the job up — is pinned separately by
-    test_mark_running_refuses_a_job_that_is_no_longer_queued below.
+    """SolveRunner.cancel no longer touches the Future — only the database
+    row — so this genuinely reaches mark_running: the thread still fires,
+    _run_job calls mark_running, gets False because the document is already
+    cancelled, and returns early. That is the same database guard that
+    test_mark_running_refuses_a_job_that_is_no_longer_queued pins directly
+    at the repository level, without a runner or executor in the way.
     """
     threads = DeferredExecutor()
     calls: list[int] = []
@@ -199,11 +198,11 @@ def test_solutions_are_listed_only_for_their_own_scenario(db):
 def test_mark_running_refuses_a_job_that_is_no_longer_queued(db):
     """The queued filter is the whole cancellation race guarantee.
 
-    The runner-level cancellation test cannot reach this: SolveRunner.cancel
-    also cancels the pending Future, so _run_job is never entered and
-    mark_running is never called. This drives the database guard directly,
-    which is what protects the real race — the pool has already picked the
-    job up by the time the cancel arrives.
+    This drives the database guard directly, with no runner or executor in
+    the way — the same guard test_a_queued_job_can_be_cancelled_and_then_never_runs
+    now also reaches through the runner, since SolveRunner.cancel only flips
+    the database row. Pinned at both levels: this one proves the guard
+    itself; that one proves the runner actually relies on it.
     """
     repo = SolutionRepo(db)
     solution_id = repo.create_queued(
@@ -214,3 +213,25 @@ def test_mark_running_refuses_a_job_that_is_no_longer_queued(db):
     # The pool picks it up regardless; it must decline to start.
     assert repo.mark_running("school-1", solution_id) is False
     assert repo.get("school-1", solution_id)["jobStatus"] == JobStatus.CANCELLED
+
+
+def test_a_terminal_document_cannot_be_revived(db):
+    """Finding 1: mark_done and mark_failed must not resurrect a terminal job.
+
+    Reachable path: a document is `running`; a startup sweep flips it
+    `failed` (or a cancel flips it `cancelled`); the in-flight solve that
+    was already running then finishes and calls `mark_done`, which must not
+    overwrite the terminal document — otherwise it ends up `done` while
+    still carrying a leftover `error` field, a contradiction.
+    """
+    repo = SolutionRepo(db)
+    solution_id = repo.create_queued(
+        "school-1", "scenario-1", {"grades": [4]}, 1.0
+    )
+    assert repo.cancel_if_queued("school-1", solution_id) is True
+
+    assert repo.mark_done("school-1", solution_id, DONE_PAYLOAD) is False
+
+    doc = repo.get("school-1", solution_id)
+    assert doc["jobStatus"] == JobStatus.CANCELLED
+    assert doc["solveStatus"] is None

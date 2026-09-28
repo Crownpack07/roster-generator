@@ -461,12 +461,20 @@ class SolutionRepo:
 
     def mark_done(
         self, school_id: str, solution_id: str, payload: dict[str, Any]
-    ) -> None:
+    ) -> bool:
+        """Only a running job may finish.
+
+        Matching on `jobStatus: "running"` stops a terminal document from
+        being resurrected: if a startup sweep already marked this job
+        `failed` while a stray solve was still in flight, that solve's
+        result must be dropped, not allowed to overwrite the failure with
+        contradictory fields (e.g. `done` with a leftover restart error).
+        """
         oid = _oid(solution_id)
         if oid is None:
-            return
-        self._c.update_one(
-            {"_id": oid, "schoolId": school_id},
+            return False
+        result = self._c.update_one(
+            {"_id": oid, "schoolId": school_id, "jobStatus": "running"},
             {
                 "$set": {
                     "jobStatus": "done",
@@ -483,16 +491,26 @@ class SolutionRepo:
                 }
             },
         )
+        return result.matched_count == 1
 
     def mark_failed(
         self, school_id: str, solution_id: str, error: str
-    ) -> None:
-        """A crashed job. `solveStatus` stays None — never "unknown"."""
+    ) -> bool:
+        """A crashed job. `solveStatus` stays None — never "unknown".
+
+        Matching on `jobStatus: {"$in": ["queued", "running"]}` is the same
+        anti-resurrection guard as `mark_done`'s: a job that is already
+        terminal (done, failed, or cancelled) must not be overwritten.
+        """
         oid = _oid(solution_id)
         if oid is None:
-            return
-        self._c.update_one(
-            {"_id": oid, "schoolId": school_id},
+            return False
+        result = self._c.update_one(
+            {
+                "_id": oid,
+                "schoolId": school_id,
+                "jobStatus": {"$in": ["queued", "running"]},
+            },
             {
                 "$set": {
                     "jobStatus": "failed",
@@ -502,6 +520,7 @@ class SolutionRepo:
                 }
             },
         )
+        return result.matched_count == 1
 
     def cancel_if_queued(self, school_id: str, solution_id: str) -> bool:
         oid = _oid(solution_id)
@@ -525,6 +544,23 @@ class SolutionRepo:
         school filter, because a restart orphans every school's jobs alike.
         The process pool dies with the container, so anything still queued or
         running has no one left to finish it.
+
+        This assumes a SINGLE application process. Running more than one —
+        for example `uvicorn --workers N` with N > 1, or a rolling deploy
+        that briefly overlaps an old and a new process — makes this method
+        unsafe: a second process's startup sweep will fail a first process's
+        still-live jobs out from under it, because it cannot distinguish
+        "orphaned by a dead process" from "in progress in a live one".
+
+        `mark_done` and `mark_failed` both filter on the job status they
+        expect, so a wrongly-swept job cannot be resurrected into a
+        contradictory document — the in-flight solve's result is silently
+        dropped and the job is left `failed`, and a user just re-runs it.
+        That is the accepted degradation for this deployment shape. Fixing
+        it properly (a lease or heartbeat per job) is out of scope: the spec
+        explicitly descopes heartbeats for a one-container deployment. The
+        mitigation here is deployment configuration — run exactly one
+        process — not code.
         """
         result = self._c.update_many(
             {"jobStatus": {"$in": ["queued", "running"]}},

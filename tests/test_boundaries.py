@@ -70,3 +70,40 @@ def test_the_package_init_does_not_import_the_store_jobs_or_api_layers():
         m for m in imported if m.startswith(FORBIDDEN_ROSTER_PREFIXES)
     }
     assert forbidden == set(), forbidden
+
+
+WORKER_FORBIDDEN_ROSTER_PREFIXES = ("roster.store", "roster.api")
+
+
+def test_the_solve_worker_imports_no_driver_and_no_store_transitively():
+    """The child process must reach neither MongoDB nor the store layer.
+
+    tests/test_jobs_worker.py AST-scans the worker's own source, which cannot
+    see a transitive import. This runs the real import in a fresh interpreter,
+    so a driver pulled in three modules deep is still caught.
+
+    `roster.jobs` is excluded from the forbidden prefixes here for the obvious
+    reason: the module under test lives in it.
+    """
+    script = textwrap.dedent(
+        f"""
+        import sys
+        import roster.jobs.worker
+
+        roots = {FORBIDDEN_ROOTS!r}
+        prefixes = {WORKER_FORBIDDEN_ROSTER_PREFIXES!r}
+        leaked = sorted(
+            m
+            for m in sys.modules
+            if m.split(".")[0] in roots or m.startswith(prefixes)
+        )
+        print(",".join(leaked))
+        """
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert proc.stdout.strip() == "", proc.stdout

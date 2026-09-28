@@ -10,6 +10,7 @@ school's data past review.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 from bson import ObjectId
@@ -374,3 +375,166 @@ class ScenarioRepo:
             ).deleted_count
             == 1
         )
+
+
+class SolutionRepo:
+    """The solutions collection, which doubles as the job record.
+
+    A solution document is created the moment a solve is requested and fills
+    in as the job progresses, so there is no second collection to keep
+    consistent with it.
+
+    `jobStatus` and `solveStatus` are separate fields and are never merged.
+    `solveStatus` stays None unless `jobStatus` is "done".
+    """
+
+    def __init__(self, db: Database) -> None:
+        self._c = db["solutions"]
+
+    @staticmethod
+    def _public(doc: dict[str, Any]) -> dict[str, Any]:
+        out = dict(doc)
+        out["id"] = str(out.pop("_id"))
+        return out
+
+    def create_queued(
+        self,
+        school_id: str,
+        scenario_id: str,
+        snapshot: dict[str, Any],
+        time_limit_s: float,
+        solver_version: str = "",
+    ) -> str:
+        doc: dict[str, Any] = {
+            "schoolId": school_id,
+            "scenarioId": scenario_id,
+            "jobStatus": "queued",
+            "solveStatus": None,
+            "inputSnapshot": snapshot,
+            "timeLimitS": time_limit_s,
+            "solverVersion": solver_version,
+            "placements": [],
+            "stats": None,
+            "findings": [],
+            "conflict": None,
+            "error": None,
+            "createdAt": datetime.now(timezone.utc),
+            "startedAt": None,
+            "finishedAt": None,
+        }
+        return str(self._c.insert_one(doc).inserted_id)
+
+    def get(self, school_id: str, solution_id: str) -> dict[str, Any] | None:
+        oid = _oid(solution_id)
+        if oid is None:
+            return None
+        doc = self._c.find_one({"_id": oid, "schoolId": school_id})
+        return self._public(doc) if doc else None
+
+    def list_for_scenario(
+        self, school_id: str, scenario_id: str
+    ) -> list[dict[str, Any]]:
+        rows = self._c.find(
+            {"schoolId": school_id, "scenarioId": scenario_id}
+        ).sort("createdAt", -1)
+        return [self._public(d) for d in rows]
+
+    def mark_running(self, school_id: str, solution_id: str) -> bool:
+        """Only queued jobs may start.
+
+        This filter is what makes cancellation race-free: a job cancelled
+        between submission and execution simply never begins.
+        """
+        oid = _oid(solution_id)
+        if oid is None:
+            return False
+        result = self._c.update_one(
+            {"_id": oid, "schoolId": school_id, "jobStatus": "queued"},
+            {
+                "$set": {
+                    "jobStatus": "running",
+                    "startedAt": datetime.now(timezone.utc),
+                }
+            },
+        )
+        return result.matched_count == 1
+
+    def mark_done(
+        self, school_id: str, solution_id: str, payload: dict[str, Any]
+    ) -> None:
+        oid = _oid(solution_id)
+        if oid is None:
+            return
+        self._c.update_one(
+            {"_id": oid, "schoolId": school_id},
+            {
+                "$set": {
+                    "jobStatus": "done",
+                    "solveStatus": payload["status"],
+                    "placements": payload.get("placements", []),
+                    "findings": payload.get("findings", []),
+                    "conflict": payload.get("conflict"),
+                    "stats": {
+                        "doublesPlaced": payload.get("doublesPlaced", 0),
+                        "doublesCeiling": payload.get("doublesCeiling", 0),
+                        "wallSeconds": payload.get("wallSeconds", 0.0),
+                    },
+                    "finishedAt": datetime.now(timezone.utc),
+                }
+            },
+        )
+
+    def mark_failed(
+        self, school_id: str, solution_id: str, error: str
+    ) -> None:
+        """A crashed job. `solveStatus` stays None — never "unknown"."""
+        oid = _oid(solution_id)
+        if oid is None:
+            return
+        self._c.update_one(
+            {"_id": oid, "schoolId": school_id},
+            {
+                "$set": {
+                    "jobStatus": "failed",
+                    "solveStatus": None,
+                    "error": error,
+                    "finishedAt": datetime.now(timezone.utc),
+                }
+            },
+        )
+
+    def cancel_if_queued(self, school_id: str, solution_id: str) -> bool:
+        oid = _oid(solution_id)
+        if oid is None:
+            return False
+        result = self._c.update_one(
+            {"_id": oid, "schoolId": school_id, "jobStatus": "queued"},
+            {
+                "$set": {
+                    "jobStatus": "cancelled",
+                    "finishedAt": datetime.now(timezone.utc),
+                }
+            },
+        )
+        return result.matched_count == 1
+
+    def sweep_orphans(self) -> int:
+        """Fail every job left behind by a previous process lifetime.
+
+        Runs at startup across all tenants — the one method here with no
+        school filter, because a restart orphans every school's jobs alike.
+        The process pool dies with the container, so anything still queued or
+        running has no one left to finish it.
+        """
+        result = self._c.update_many(
+            {"jobStatus": {"$in": ["queued", "running"]}},
+            {
+                "$set": {
+                    "jobStatus": "failed",
+                    "solveStatus": None,
+                    "error": "server restarted during solve",
+                    "finishedAt": datetime.now(timezone.utc),
+                }
+            },
+        )
+        return result.modified_count

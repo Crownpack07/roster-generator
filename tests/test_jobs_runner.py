@@ -126,6 +126,14 @@ def test_the_snapshot_and_time_limit_are_frozen_on_the_document(db):
 
 
 def test_a_queued_job_can_be_cancelled_and_then_never_runs(db):
+    """Exercises the runner's cancel path, not the database-level guard.
+
+    SolveRunner.cancel also cancels the pending Future, so with a
+    DeferredExecutor the task never starts and mark_running is never called
+    here. The database guard itself — the actual race protection when the
+    pool has already picked the job up — is pinned separately by
+    test_mark_running_refuses_a_job_that_is_no_longer_queued below.
+    """
     threads = DeferredExecutor()
     calls: list[int] = []
     runner = make_runner(
@@ -186,3 +194,23 @@ def test_solutions_are_listed_only_for_their_own_scenario(db):
         for d in SolutionRepo(db).list_for_scenario("school-1", "scenario-1")
     ]
     assert set(ids) == {first, second}
+
+
+def test_mark_running_refuses_a_job_that_is_no_longer_queued(db):
+    """The queued filter is the whole cancellation race guarantee.
+
+    The runner-level cancellation test cannot reach this: SolveRunner.cancel
+    also cancels the pending Future, so _run_job is never entered and
+    mark_running is never called. This drives the database guard directly,
+    which is what protects the real race — the pool has already picked the
+    job up by the time the cancel arrives.
+    """
+    repo = SolutionRepo(db)
+    solution_id = repo.create_queued(
+        "school-1", "scenario-1", {"grades": [4]}, 1.0
+    )
+
+    assert repo.cancel_if_queued("school-1", solution_id) is True
+    # The pool picks it up regardless; it must decline to start.
+    assert repo.mark_running("school-1", solution_id) is False
+    assert repo.get("school-1", solution_id)["jobStatus"] == JobStatus.CANCELLED

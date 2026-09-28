@@ -12,6 +12,7 @@ import sys
 import textwrap
 
 FORBIDDEN_ROOTS = {"fastapi", "starlette", "pymongo", "bson", "mongomock"}
+FORBIDDEN_ROSTER_PREFIXES = ("roster.store", "roster.jobs", "roster.api")
 
 
 def test_the_solver_core_imports_neither_fastapi_nor_pymongo():
@@ -19,9 +20,10 @@ def test_the_solver_core_imports_neither_fastapi_nor_pymongo():
 
     An AST scan of one file only sees that file's own import statements. A
     dependency three modules deep would pass it and still break the claim.
+    Also catches a core module reaching into the store, jobs or api layers.
     """
     script = textwrap.dedent(
-        """
+        f"""
         import sys
         import roster
         import roster.solve
@@ -29,8 +31,13 @@ def test_the_solver_core_imports_neither_fastapi_nor_pymongo():
         import roster.verify
         import roster.io
 
-        forbidden = {"fastapi", "starlette", "pymongo", "bson", "mongomock"}
-        leaked = sorted(m for m in sys.modules if m.split(".")[0] in forbidden)
+        roots = {FORBIDDEN_ROOTS!r}
+        prefixes = {FORBIDDEN_ROSTER_PREFIXES!r}
+        leaked = sorted(
+            m
+            for m in sys.modules
+            if m.split(".")[0] in roots or m.startswith(prefixes)
+        )
         print(",".join(leaked))
         """
     )

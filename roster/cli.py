@@ -23,7 +23,19 @@ def main(argv: list[str] | None = None) -> int:
     solve_cmd.add_argument("--seed", type=int, default=None)
     solve_cmd.add_argument("--workers", type=int, default=None)
 
+    create_cmd = sub.add_parser(
+        "create-school", help="create the first school and its login"
+    )
+    create_cmd.add_argument("--name", required=True)
+    create_cmd.add_argument("--email", required=True)
+    create_cmd.add_argument("--password", required=True)
+    create_cmd.add_argument("--grades", default="4,5,6,7")
+    create_cmd.add_argument("--sections", default="A,B,C")
+
     args = parser.parse_args(argv)
+
+    if args.command == "create-school":
+        return _create_school(args)
 
     path = Path(args.path)
     if not path.is_file():
@@ -57,6 +69,77 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(json.dumps(result_to_dict(result), indent=2))
     return 0 if result.status in _SUCCESS else 1
+
+
+def _database_for_cli(settings):
+    """Split out so tests can substitute an in-memory database.
+
+    The pymongo imports live inside this function, not at module top level:
+    `roster.cli solve` must keep working for anyone who installed the
+    package without the `server` extra.
+    """
+    from roster.store.client import get_database, make_client
+
+    return get_database(make_client(settings), settings)
+
+
+def _create_school(args) -> int:
+    from pymongo.errors import DuplicateKeyError
+
+    from roster.api.security import hash_password
+    from roster.store.config import ConfigError, settings_from_env
+    from roster.store.indexes import ensure_indexes
+    from roster.store.repositories import (
+        SchoolRepo,
+        UserRepo,
+        ValidationError,
+    )
+
+    try:
+        settings = settings_from_env()
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    db = _database_for_cli(settings)
+    ensure_indexes(db)
+
+    try:
+        grades = tuple(
+            int(g) for g in args.grades.split(",") if g.strip()
+        )
+        sections = tuple(s.strip() for s in args.sections.split(",") if s.strip())
+    except ValueError:
+        print(f"error: --grades must be integers, got {args.grades!r}", file=sys.stderr)
+        return 2
+
+    # Ruling 21: check email BEFORE creating school to avoid orphans
+    if UserRepo(db).by_email(args.email) is not None:
+        print(
+            f"error: {args.email} already has an account",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        school = SchoolRepo(db).create(args.name, grades, sections)
+    except ValidationError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        UserRepo(db).create(
+            school.id, args.email, hash_password(args.password)
+        )
+    except DuplicateKeyError:
+        print(
+            f"error: {args.email} already has an account",
+            file=sys.stderr,
+        )
+        return 2
+
+    print(f"created school {school.name} ({school.id}) with login {args.email}")
+    return 0
 
 
 if __name__ == "__main__":

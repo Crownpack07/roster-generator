@@ -189,3 +189,28 @@ def test_the_solve_command_still_works_without_the_server_extra():
         m for m in top_level if m.split(".")[0] in {"pymongo", "bson"}
     }
     assert forbidden == set(), forbidden
+
+
+# --- Final review fixes ---------------------------------------------------
+
+
+def test_create_school_stores_a_lower_cased_email(patched_db):
+    code = main(
+        ["create-school", "--name", "M", "--email", " Head@Meridian.Example ",
+         "--password", "pw"]
+    )
+    assert code == 0
+    assert patched_db["users"].find_one()["email"] == "head@meridian.example"
+
+
+@pytest.mark.parametrize("flag", ["--grades", "--sections"])
+def test_create_school_with_empty_grades_or_sections_exits_two(
+    patched_db, capsys, flag
+):
+    code = main(
+        ["create-school", "--name", "M", "--email", "a@b.c",
+         "--password", "pw", flag, ""]
+    )
+    assert code == 2
+    assert patched_db["schools"].count_documents({}) == 0
+    assert patched_db["users"].count_documents({}) == 0

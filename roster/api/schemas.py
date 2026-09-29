@@ -32,11 +32,11 @@ class SchoolResponse(BaseModel):
 
 
 class SchoolUpdate(BaseModel):
-    name: str
+    name: str = Field(min_length=1)
 
 
 class TeacherRequest(BaseModel):
-    name: str
+    name: str = Field(min_length=1)
     blockedSlots: list[int] = Field(default_factory=list)
 
 
@@ -109,7 +109,7 @@ class BlockRequest(BaseModel):
 
 
 class ScenarioRequest(BaseModel):
-    name: str
+    name: str = Field(min_length=1)
 
 
 class ScenarioUpdate(BaseModel):
@@ -141,4 +141,4 @@ class ValidateResponse(BaseModel):
 
 
 class SolveRequest(BaseModel):
-    timeLimitS: float | None = None
+    timeLimitS: float | None = Field(default=None, gt=0, le=600)

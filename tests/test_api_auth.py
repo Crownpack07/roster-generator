@@ -124,3 +124,37 @@ def test_current_session_accepts_a_validly_signed_cookie():
     token = sign_session(TEST_SETTINGS.session_secret, "school-1", "user-1")
     session = current_session(_request({SESSION_COOKIE: token}))
     assert (session.school_id, session.user_id) == ("school-1", "user-1")
+
+
+# --- Final review fixes ---------------------------------------------------
+
+
+def test_an_unknown_email_still_pays_for_a_password_verification(
+    client, monkeypatch
+):
+    """I1: no timing oracle for which emails have accounts."""
+    calls = []
+    import roster.api.routers.auth as auth
+
+    real = auth.verify_password
+    monkeypatch.setattr(
+        auth,
+        "verify_password",
+        lambda h, p: calls.append((h, p)) or real(h, p),
+    )
+    response = client.post(
+        "/auth/login", json={"email": "nobody@example.com", "password": "pw"}
+    )
+    assert response.status_code == 401
+    assert len(calls) == 1
+
+
+def test_login_is_case_insensitive_on_email(client, db):
+    school = SchoolRepo(db).create("Meridian", (4,), ("A",))
+    UserRepo(db).create(school.id, "head@meridian.example", hash_password("pw"))
+
+    response = client.post(
+        "/auth/login",
+        json={"email": " Head@Meridian.Example ", "password": "pw"},
+    )
+    assert response.status_code == 200

@@ -15,7 +15,7 @@ from roster.api.deps import Session, current_session, get_db, get_runner
 from roster.api.routers.scenarios import assemble_or_http
 from roster.api.schemas import SolveRequest
 from roster.io import problem_to_dict
-from roster.store.repositories import SolutionRepo
+from roster.store.repositories import ScenarioRepo, SolutionRepo
 
 router = APIRouter(tags=["solutions"])
 
@@ -34,6 +34,8 @@ def start_solve(
     the job waits in the queue cannot change what is solved.
     """
     problem = assemble_or_http(db, session.school_id, scenario_id)
+    # Store the canonical id, not the path text (upper-case hex parses too).
+    scenario_id = ScenarioRepo(db).get(session.school_id, scenario_id).id
     time_limit = payload.timeLimitS if payload is not None else None
     solution_id = runner.submit(
         session.school_id,

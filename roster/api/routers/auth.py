@@ -7,6 +7,7 @@ from roster.api.schemas import LoginRequest, SessionResponse
 from roster.api.security import (
     SESSION_COOKIE,
     SESSION_MAX_AGE_S,
+    hash_password,
     sign_session,
     verify_password,
 )
@@ -18,6 +19,10 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 # discover which addresses have accounts.
 _BAD_CREDENTIALS = "invalid email or password"
 
+# An unknown email must cost as much as a wrong password, or response time
+# reveals which addresses have accounts.
+_DUMMY_HASH = hash_password("dummy-password-for-timing")
+
 
 @router.post("/login", response_model=SessionResponse)
 def login(
@@ -26,10 +31,11 @@ def login(
     db=Depends(get_db),
     settings=Depends(get_settings),
 ) -> SessionResponse:
-    user = UserRepo(db).by_email(payload.email)
-    if user is None or not verify_password(
-        user.password_hash, payload.password
-    ):
+    user = UserRepo(db).by_email(payload.email.strip().lower())
+    if user is None:
+        verify_password(_DUMMY_HASH, payload.password)
+        raise HTTPException(status_code=401, detail=_BAD_CREDENTIALS)
+    if not verify_password(user.password_hash, payload.password):
         raise HTTPException(status_code=401, detail=_BAD_CREDENTIALS)
 
     school = SchoolRepo(db).get(user.school_id)

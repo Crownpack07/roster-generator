@@ -172,3 +172,60 @@ def test_solving_a_scenario_that_cannot_assemble_is_422(solvable):
 def test_solve_routes_require_a_session(client):
     assert client.post("/scenarios/abc/solve").status_code == 401
     assert client.get("/solutions/abc").status_code == 401
+
+
+# --- Final review fixes ---------------------------------------------------
+
+
+@pytest.mark.parametrize("limit", [0, -5, 601])
+def test_an_out_of_range_time_limit_is_a_422(solvable, limit):
+    client, scenario_id, _ = solvable
+    response = client.post(
+        f"/scenarios/{scenario_id}/solve", json={"timeLimitS": limit}
+    )
+    assert response.status_code == 422
+
+
+def test_the_maximum_time_limit_is_accepted(solvable):
+    client, scenario_id, _ = solvable
+    response = client.post(
+        f"/scenarios/{scenario_id}/solve", json={"timeLimitS": 600}
+    )
+    assert response.status_code == 202
+
+
+def test_a_solve_stores_the_canonical_scenario_id(solvable):
+    client, scenario_id, _ = solvable
+    client.post(f"/scenarios/{scenario_id.upper()}/solve")
+
+    listed = client.get(f"/scenarios/{scenario_id}/solutions").json()
+    assert len(listed) == 1
+
+
+def test_the_history_list_leaves_out_the_heavy_fields(solvable):
+    client, scenario_id, _ = solvable
+    solution_id = client.post(f"/scenarios/{scenario_id}/solve").json()["id"]
+
+    item = client.get(f"/scenarios/{scenario_id}/solutions").json()[0]
+    assert "inputSnapshot" not in item
+    assert "placements" not in item
+    full = client.get(f"/solutions/{solution_id}").json()
+    assert "inputSnapshot" in full and "placements" in full
+
+
+def test_writing_to_another_school_s_scenario_is_a_404_and_changes_nothing(
+    signed_in_client, db
+):
+    """M14: expected to pass unchanged; the code was already correct."""
+    other = SchoolRepo(db).create("Other", (4,), ("A",))
+    theirs = ScenarioRepo(db).create(other.id, "Theirs")
+
+    patched = signed_in_client.patch(
+        f"/scenarios/{theirs.id}", json={"name": "Renamed"}
+    )
+    solved = signed_in_client.post(f"/scenarios/{theirs.id}/solve")
+
+    assert patched.status_code == 404
+    assert solved.status_code == 404
+    assert ScenarioRepo(db).get(other.id, theirs.id).name == "Theirs"
+    assert db["solutions"].count_documents({}) == 0

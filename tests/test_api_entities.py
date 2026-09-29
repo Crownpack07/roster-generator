@@ -1,3 +1,5 @@
+import pytest
+
 from roster.api.security import hash_password
 from roster.store.repositories import SchoolRepo, TeacherRepo, UserRepo
 
@@ -215,3 +217,27 @@ def test_every_route_that_needs_a_session_rejects_a_request_without_one(client):
 
     # Guards against the sweep silently checking nothing.
     assert checked >= 15, f"only swept {checked} routes"
+
+
+# --- Final review fixes ---------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "method,path,body",
+    [
+        ("post", "/teachers", {"name": ""}),
+        ("patch", "/school", {"name": ""}),
+        ("post", "/scenarios", {"name": ""}),
+    ],
+)
+def test_an_empty_name_is_a_422(signed_in_client, method, path, body):
+    response = getattr(signed_in_client, method)(path, json=body)
+    assert response.status_code == 422
+
+
+def test_teachers_with_the_same_name_list_in_insertion_order(db):
+    from roster.store.repositories import TeacherRepo
+
+    repo = TeacherRepo(db)
+    ids = [repo.create("s", "Karin", frozenset()).id for _ in range(5)]
+    assert [t.id for t in repo.list("s")] == ids

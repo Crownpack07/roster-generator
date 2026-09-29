@@ -111,14 +111,16 @@ def _create_school(args) -> int:
         print(f"error: --grades must be integers, got {args.grades!r}", file=sys.stderr)
         return 2
 
+    email = args.email.strip().lower()
+
     try:
         db = _database_for_cli(settings)
         ensure_indexes(db)
 
         # Ruling 21: check email BEFORE creating school to avoid orphans
-        if UserRepo(db).by_email(args.email) is not None:
+        if UserRepo(db).by_email(email) is not None:
             print(
-                f"error: {args.email} already has an account",
+                f"error: {email} already has an account",
                 file=sys.stderr,
             )
             return 2
@@ -131,16 +133,16 @@ def _create_school(args) -> int:
 
         try:
             UserRepo(db).create(
-                school.id, args.email, hash_password(args.password)
+                school.id, email, hash_password(args.password)
             )
         except DuplicateKeyError:
             print(
-                f"error: {args.email} already has an account",
+                f"error: {email} already has an account",
                 file=sys.stderr,
             )
             return 2
 
-        print(f"created school {school.name} ({school.id}) with login {args.email}")
+        print(f"created school {school.name} ({school.id}) with login {email}")
         return 0
     except PyMongoError as exc:
         # Ruling 23: catch database connection/operation errors (not DuplicateKeyError)

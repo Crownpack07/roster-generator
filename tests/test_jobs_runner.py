@@ -235,3 +235,77 @@ def test_a_terminal_document_cannot_be_revived(db):
     doc = repo.get("school-1", solution_id)
     assert doc["jobStatus"] == JobStatus.CANCELLED
     assert doc["solveStatus"] is None
+
+
+# --- Final review fixes ---------------------------------------------------
+
+
+def crash_first_solve(snapshot, limit):
+    """Module level so a real process pool can pickle it."""
+    import os
+
+    if snapshot.get("crash"):
+        os._exit(1)
+    return DONE_PAYLOAD
+
+
+def test_a_crashed_child_fails_its_job_and_later_jobs_still_run(db):
+    from concurrent.futures import ProcessPoolExecutor
+
+    runner = SolveRunner(
+        db,
+        solve_fn=crash_first_solve,
+        thread_pool=InlineExecutor(),
+        process_pool=ProcessPoolExecutor(max_workers=1),
+    )
+    runner.start()
+    try:
+        first = runner.submit("school-1", "scenario-1", {"crash": True})
+        second = runner.submit("school-1", "scenario-1", {"crash": False})
+        repo = SolutionRepo(db)
+        assert repo.get("school-1", first)["jobStatus"] == JobStatus.FAILED
+        assert repo.get("school-1", second)["jobStatus"] == JobStatus.DONE
+    finally:
+        runner._processes.shutdown(wait=True)
+
+
+def test_a_result_that_cannot_be_recorded_fails_the_job(db):
+    runner = make_runner(db, solve_fn=lambda snapshot, limit: {})
+    solution_id = runner.submit("school-1", "scenario-1", SNAPSHOT)
+
+    doc = SolutionRepo(db).get("school-1", solution_id)
+    assert doc["jobStatus"] == JobStatus.FAILED
+    assert doc["solveStatus"] is None
+    assert "could not record result" in doc["error"]
+
+
+def test_an_exception_in_the_job_thread_is_logged(db, monkeypatch, caplog):
+    def boom(self, school_id, solution_id):
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(SolutionRepo, "mark_running", boom)
+    runner = make_runner(db)
+    with caplog.at_level("ERROR"):
+        runner.submit("school-1", "scenario-1", SNAPSHOT)
+    assert "db down" in caplog.text
+
+
+def test_the_thread_pool_is_sized_from_max_workers(db):
+    runner = SolveRunner(db, max_workers=3)
+    runner.start()
+    try:
+        assert runner._threads._max_workers == 3
+    finally:
+        runner.shutdown()
+
+
+def test_shutdown_does_not_wait_and_cancels_queued_futures(db):
+    calls = []
+
+    class Spy(InlineExecutor):
+        def shutdown(self, wait=True, cancel_futures=False):
+            calls.append((wait, cancel_futures))
+
+    runner = make_runner(db, thread_pool=Spy(), process_pool=Spy())
+    runner.shutdown()
+    assert calls == [(False, True), (False, True)]

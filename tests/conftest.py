@@ -34,7 +34,7 @@ class InlineExecutor:
             future.set_exception(exc)
         return future
 
-    def shutdown(self, wait: bool = True) -> None:
+    def shutdown(self, wait: bool = True, cancel_futures: bool = False) -> None:
         return None
 
 
@@ -62,7 +62,7 @@ class DeferredExecutor:
         except BaseException as exc:  # noqa: BLE001
             future.set_exception(exc)
 
-    def shutdown(self, wait: bool = True) -> None:
+    def shutdown(self, wait: bool = True, cancel_futures: bool = False) -> None:
         return None
 
 

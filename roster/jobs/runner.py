@@ -14,7 +14,10 @@ a guessed status is exactly what spec §5.2 forbids.
 
 from __future__ import annotations
 
+import logging
+import threading
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from enum import StrEnum
 from typing import Any
 
@@ -22,6 +25,9 @@ from pymongo.database import Database
 
 from roster.jobs.worker import DEFAULT_TIME_LIMIT_S, solve_snapshot
 from roster.store.repositories import SolutionRepo
+
+
+log = logging.getLogger(__name__)
 
 
 class JobStatus(StrEnum):
@@ -59,6 +65,7 @@ class SolveRunner:
         self._threads = thread_pool
         self._processes = process_pool
         self._version = solver_version()
+        self._pool_lock = threading.Lock()
 
     def start(self) -> None:
         """Build the pools (if not injected) and sweep orphaned jobs.
@@ -79,7 +86,7 @@ class SolveRunner:
         """
         if self._threads is None:
             self._threads = ThreadPoolExecutor(
-                max_workers=1, thread_name_prefix="solve-orchestrator"
+                max_workers=self._max_workers, thread_name_prefix="solve-orchestrator"
             )
         if self._processes is None:
             self._processes = ProcessPoolExecutor(
@@ -88,9 +95,12 @@ class SolveRunner:
         self._solutions.sweep_orphans()
 
     def shutdown(self) -> None:
+        # Do not wait for a running solve (up to its whole time limit), and
+        # drop queued work: those rows stay `queued` and the next startup's
+        # sweep_orphans marks them failed.
         for pool in (self._threads, self._processes):
             if pool is not None:
-                pool.shutdown(wait=False)
+                pool.shutdown(wait=False, cancel_futures=True)
 
     def submit(
         self,
@@ -103,10 +113,32 @@ class SolveRunner:
         solution_id = self._solutions.create_queued(
             school_id, scenario_id, snapshot, limit, self._version
         )
-        self._threads.submit(
+        future = self._threads.submit(
             self._run_job, school_id, solution_id, snapshot, limit
         )
+        future.add_done_callback(self._log_failure)
         return solution_id
+
+    @staticmethod
+    def _log_failure(future) -> None:
+        if future.cancelled():
+            return
+        exc = future.exception()
+        if exc is not None:
+            log.error("solve job thread failed", exc_info=exc)
+
+    def _replace_broken_pool(self, broken) -> None:
+        """A dead child poisons the whole executor; swap in a fresh one.
+
+        Jobs failing at the same time all arrive here with the same broken
+        pool, so only the first replaces it.
+        """
+        with self._pool_lock:
+            if self._processes is broken:
+                self._processes = ProcessPoolExecutor(
+                    max_workers=self._max_workers
+                )
+                broken.shutdown(wait=False)
 
     def cancel(self, school_id: str, solution_id: str) -> bool:
         """Only while queued. A running CP-SAT solve cannot be interrupted.
@@ -139,23 +171,25 @@ class SolveRunner:
         if not self._solutions.mark_running(school_id, solution_id):
             # Cancelled between submission and execution. Nothing to do.
             return
+        pool = self._processes
         try:
-            payload = self._processes.submit(
-                self._solve_fn, snapshot, time_limit_s
-            ).result()
+            payload = pool.submit(self._solve_fn, snapshot, time_limit_s).result()
         except BaseException as exc:  # noqa: BLE001
             # A crash is `failed`, never `unknown`. "We broke" and "the
             # solver could not decide" are different answers to the user.
-            # Caught as BaseException because a cancelled process-pool
-            # future raises CancelledError, itself a BaseException
-            # subclass, and that must still be recorded as `failed` rather
-            # than escaping unmarked. KeyboardInterrupt and SystemExit are
-            # the one case that must still propagate after being recorded,
-            # so an interpreter shutdown is never silently swallowed here.
+            # BaseException because a cancelled pool future raises
+            # CancelledError, which must still be recorded as `failed`.
+            if isinstance(exc, BrokenProcessPool):
+                self._replace_broken_pool(pool)
             self._solutions.mark_failed(
                 school_id, solution_id, f"{type(exc).__name__}: {exc}"
             )
-            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
-                raise
             return
-        self._solutions.mark_done(school_id, solution_id, payload)
+        try:
+            self._solutions.mark_done(school_id, solution_id, payload)
+        except Exception as exc:  # noqa: BLE001
+            self._solutions.mark_failed(
+                school_id,
+                solution_id,
+                f"could not record result: {type(exc).__name__}: {exc}",
+            )

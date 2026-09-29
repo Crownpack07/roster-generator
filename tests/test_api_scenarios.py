@@ -126,17 +126,55 @@ def test_a_scenario_naming_a_deleted_teacher_is_422_not_a_traceback(
     assert "teacher" in response.json()["detail"]
 
 
-def test_validate_returns_findings_with_a_200(seeded_client):
-    """A finding is an answer, not an error. The seeded scenario is valid,
-    so there are no errors, but the response structure is correct."""
+def test_a_valid_scenario_validates_cleanly(seeded_client):
+    """The seeded scenario trips nothing: grades 5-7 demand only filler,
+    which the coverage checks exclude."""
     client, scenario_id, _ = seeded_client
 
     response = client.post(f"/scenarios/{scenario_id}/validate")
 
     assert response.status_code == 200
+    assert response.json() == {"findings": [], "hasErrors": False}
+
+
+def test_validate_returns_findings_with_a_200(seeded_client):
+    """A finding is an answer, not an error — 200 even when a check fails.
+
+    This is the contract the Phase 3 assignment editor depends on: it posts
+    on every keystroke and renders whatever comes back.
+    """
+    client, scenario_id, teacher_id = seeded_client
+    # A core subject with 5 periods cannot appear on all six days.
+    client.put(
+        "/curriculum",
+        json={"kind": "caps", "grade": 4, "subjectCode": "MAT", "periods": 5},
+    )
+    # Update the block's periodsPerClass to match the new curriculum.
+    client.patch(
+        f"/scenarios/{scenario_id}",
+        json={
+            "blocks": [
+                {
+                    "teacherId": teacher_id,
+                    "grade": 4,
+                    "subject": "MAT",
+                    "sections": ["A", "B", "C"],
+                    "periodsPerClass": 5,
+                }
+            ]
+        },
+    )
+
+    response = client.post(f"/scenarios/{scenario_id}/validate")
+
+    assert response.status_code == 200
     body = response.json()
-    assert body["hasErrors"] is False
-    assert all({"code", "severity", "message"} <= set(f) for f in body["findings"])
+    assert body["hasErrors"] is True
+    assert body["findings"], "expected at least one finding"
+    assert all(
+        {"code", "severity", "message"} <= set(f) for f in body["findings"]
+    )
+    assert any(f["code"] == "curriculum_bounds" for f in body["findings"])
 
 
 def test_validate_does_not_invoke_the_solver(seeded_client):

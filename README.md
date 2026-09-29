@@ -226,3 +226,55 @@ cannot easily be wrong in the same way.
 
 Periods are the only unit anywhere in the model. There is no concept of minutes,
 because period lengths flex in practice and modelling them buys nothing.
+
+## Running the API
+
+Phase 2 adds a FastAPI service over MongoDB. Install the server extra:
+
+```bash
+pip install -e ".[dev,server]"
+```
+
+Two environment variables are required and have no defaults:
+
+```bash
+export MONGODB_URI="mongodb+srv://..."
+export SESSION_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+```
+
+Create the first school and its login, then start the server:
+
+```bash
+python -m roster.cli create-school \
+    --name "Meridian" \
+    --email head@meridian.example \
+    --password "a real password"
+
+uvicorn roster.api.app:create_app --factory --reload
+```
+
+### Solving is a background job
+
+Solving takes 10.5 seconds to several minutes, so `POST /scenarios/{id}/solve`
+returns `202` immediately with a solution id, and the client polls
+`GET /solutions/{id}`.
+
+The response carries **two** statuses and they never merge:
+
+| Field | Meaning |
+|---|---|
+| `jobStatus` | `queued` `running` `done` `failed` `cancelled` — did the job execute? |
+| `solveStatus` | `optimal` `feasible` `infeasible` `unknown` `blocked` — what did the solver conclude? `null` until `jobStatus` is `done`. |
+
+`failed` means the job crashed. `unknown` means the solver searched and could
+neither find a timetable nor prove none exists — a routine outcome for a
+perturbed scenario, and **not** the same as `infeasible`.
+
+### Other settings
+
+| Variable | Default |
+|---|---|
+| `MONGODB_DB` | `roster` |
+| `SOLVE_TIME_LIMIT_S` | `150.0` |
+| `SOLVE_MAX_WORKERS` | `1` |
+| `COOKIE_SECURE` | `true` |

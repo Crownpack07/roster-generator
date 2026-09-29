@@ -41,7 +41,12 @@ def test_a_token_signed_with_another_secret_is_rejected():
 
 def test_a_tampered_token_is_rejected():
     token = sign_session(SECRET, "school-1", "user-1")
-    assert read_session(SECRET, token[:-1] + ("A" if token[-1] != "A" else "B")) is None
+    head, sig = token.rsplit(".", 1)
+    tampered = f"{head}.{'A' if sig[0] != 'A' else 'B'}{sig[1:]}"
+    assert read_session(SECRET, tampered) is None
+
+    other_head = sign_session(SECRET, "school-2", "user-2").rsplit(".", 1)[0]
+    assert read_session(SECRET, f"{other_head}.{sig}") is None
 
 
 def test_an_expired_token_is_rejected():

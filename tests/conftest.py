@@ -69,3 +69,63 @@ class DeferredExecutor:
 @pytest.fixture
 def inline_executors():
     return InlineExecutor(), InlineExecutor()
+
+
+from fastapi.testclient import TestClient
+
+from roster.api.app import create_app
+from roster.api.security import hash_password
+from roster.jobs.runner import SolveRunner
+from roster.store.config import Settings
+from roster.store.repositories import SchoolRepo, UserRepo
+
+TEST_SETTINGS = Settings(
+    mongodb_uri="mongodb://unused",
+    session_secret="test-secret",
+    solve_time_limit_s=1.0,
+    cookie_secure=False,
+)
+
+
+@pytest.fixture
+def runner(db):
+    """A runner whose executors run inline, so no CP-SAT and no processes."""
+    return SolveRunner(
+        db,
+        solve_fn=lambda snapshot, limit: {
+            "status": "feasible",
+            "doublesPlaced": 0,
+            "doublesCeiling": 0,
+            "wallSeconds": 0.0,
+            "findings": [],
+            "conflict": None,
+            "placements": [],
+        },
+        thread_pool=InlineExecutor(),
+        process_pool=InlineExecutor(),
+    )
+
+
+@pytest.fixture
+def client(db, runner):
+    app = create_app(settings=TEST_SETTINGS, db=db, runner=runner)
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def school(db):
+    record = SchoolRepo(db).create("Meridian", (4, 5, 6, 7), ("A", "B", "C"))
+    UserRepo(db).create(
+        record.id, "head@meridian.example", hash_password("pw")
+    )
+    return record
+
+
+@pytest.fixture
+def signed_in_client(client, school):
+    client.post(
+        "/auth/login",
+        json={"email": "head@meridian.example", "password": "pw"},
+    )
+    return client

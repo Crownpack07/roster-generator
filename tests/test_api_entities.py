@@ -170,3 +170,48 @@ def test_a_curriculum_entry_is_deleted(signed_in_client):
         signed_in_client.delete("/curriculum/caps/4/MAT").status_code == 204
     )
     assert signed_in_client.get("/curriculum", params={"kind": "caps"}).json() == []
+
+
+def test_every_route_that_needs_a_session_rejects_a_request_without_one(client):
+    """Derived from app.routes, so a route added later is covered for free.
+
+    Task 9's hand-written version probed 5 of 15 paths. A list of paths goes
+    stale the moment someone adds a route; the app object never does.
+    """
+    public = {"/auth/login", "/auth/logout", "/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
+    checked = 0
+
+    def collect_routes(app_obj, prefix=""):
+        """Recursively collect routes from app and included routers."""
+        routes = []
+        for route in app_obj.routes:
+            path = getattr(route, "path", None)
+            methods = getattr(route, "methods", None)
+            # Handle included routers
+            if path is None and hasattr(route, "original_router"):
+                nested = collect_routes(route.original_router, prefix)
+                routes.extend(nested)
+            elif path:
+                routes.append((prefix + path, methods, route))
+        return routes
+
+    all_routes = collect_routes(client.app)
+    for path, methods, route in all_routes:
+        if not path or not methods or path in public:
+            continue
+        # Substitute any path parameter with a syntactically valid value.
+        concrete = path
+        for name in getattr(route, "param_convertors", {}) or {}:
+            concrete = concrete.replace("{" + name + "}", "1")
+        if "{" in concrete:
+            continue  # unsubstituted parameter; skip rather than guess
+        for method in sorted(methods - {"HEAD", "OPTIONS"}):
+            response = client.request(method, concrete, json={})
+            assert response.status_code == 401, (
+                f"{method} {concrete} returned {response.status_code}, "
+                "not 401, without a session"
+            )
+            checked += 1
+
+    # Guards against the sweep silently checking nothing.
+    assert checked >= 15, f"only swept {checked} routes"

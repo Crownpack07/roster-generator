@@ -14,7 +14,8 @@ from fastapi.testclient import TestClient
 
 from roster.api.app import create_app
 from roster.api.security import hash_password
-from roster.io import problem_to_dict
+from roster.domain import ClassRef, Placement, Schedule
+from roster.io import problem_from_dict, problem_to_dict
 from roster.jobs.runner import SolveRunner
 from roster.store.config import Settings
 from roster.store.indexes import ensure_indexes
@@ -26,6 +27,8 @@ from roster.store.repositories import (
     TeacherRepo,
     UserRepo,
 )
+
+from roster.verify import verify
 
 from tests.fixtures.meridian import meridian_problem
 
@@ -81,6 +84,18 @@ def _seed_from_meridian(db):
     return school, scenario
 
 
+def _violations(assembled: dict, placements: list[dict]):
+    """Verify the API's placements against the problem the API assembled
+    (its teacher ids are store ids, not the fixture's)."""
+    schedule = Schedule(
+        tuple(
+            Placement(ClassRef(p["grade"], p["section"]), p["subject"], p["slot"])
+            for p in placements
+        )
+    )
+    return verify(problem_from_dict(assembled), schedule)
+
+
 @pytest.mark.solver
 def test_the_real_school_solves_through_the_api_and_verifies():
     db = mongomock.MongoClient()["roster_e2e"]
@@ -118,16 +133,15 @@ def test_the_real_school_solves_through_the_api_and_verifies():
             time.sleep(1.0)
 
         assert body["jobStatus"] == "done", body.get("error")
-        # unknown is a routine outcome and is NOT a failure of this test's
-        # subject, which is the pipeline. Only assert a schedule when one
-        # was actually produced.
-        if body["solveStatus"] in {"optimal", "feasible"}:
-            assert body["placements"]
-            assert body["stats"]["doublesPlaced"] > 0
-        else:
+        # The real school is known feasible, so infeasible/blocked would be
+        # a pipeline regression and must fail. Only unknown (the solver ran
+        # out of time) is an honest skip.
+        assert body["solveStatus"] in {"optimal", "feasible", "unknown"}
+        if body["solveStatus"] == "unknown":
             pytest.skip(
-                f"solver returned {body['solveStatus']} on this hardware; "
+                "solver returned unknown on this hardware; "
                 "the pipeline still completed correctly"
             )
-
-    runner.shutdown()
+        assert body["placements"]
+        assert body["stats"]["doublesPlaced"] > 0
+        assert _violations(assembled, body["placements"]) == []

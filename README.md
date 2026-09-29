@@ -253,6 +253,15 @@ python -m roster.cli create-school \
 uvicorn roster.api.app:create_app --factory --reload
 ```
 
+Run exactly one server process (no `uvicorn --workers N`, no overlapping
+deploys): the startup sweep fails every queued or running job, on the
+assumption that this process is the only one that could have been running
+them.
+
+Over plain http locally, set `COOKIE_SECURE=false`, otherwise the login
+cookie is marked Secure and browsers (Safari in particular) will not send it
+back.
+
 ### Solving is a background job
 
 Solving takes 10.5 seconds to several minutes, so `POST /scenarios/{id}/solve`

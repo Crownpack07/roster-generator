@@ -84,7 +84,7 @@ def _database_for_cli(settings):
 
 
 def _create_school(args) -> int:
-    from pymongo.errors import DuplicateKeyError
+    from pymongo.errors import DuplicateKeyError, PyMongoError
 
     from roster.api.security import hash_password
     from roster.store.config import ConfigError, settings_from_env
@@ -101,9 +101,7 @@ def _create_school(args) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    db = _database_for_cli(settings)
-    ensure_indexes(db)
-
+    # Parse grades/sections before connecting to database (Ruling 23)
     try:
         grades = tuple(
             int(g) for g in args.grades.split(",") if g.strip()
@@ -113,33 +111,41 @@ def _create_school(args) -> int:
         print(f"error: --grades must be integers, got {args.grades!r}", file=sys.stderr)
         return 2
 
-    # Ruling 21: check email BEFORE creating school to avoid orphans
-    if UserRepo(db).by_email(args.email) is not None:
-        print(
-            f"error: {args.email} already has an account",
-            file=sys.stderr,
-        )
-        return 2
-
     try:
-        school = SchoolRepo(db).create(args.name, grades, sections)
-    except ValidationError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
+        db = _database_for_cli(settings)
+        ensure_indexes(db)
 
-    try:
-        UserRepo(db).create(
-            school.id, args.email, hash_password(args.password)
-        )
-    except DuplicateKeyError:
-        print(
-            f"error: {args.email} already has an account",
-            file=sys.stderr,
-        )
-        return 2
+        # Ruling 21: check email BEFORE creating school to avoid orphans
+        if UserRepo(db).by_email(args.email) is not None:
+            print(
+                f"error: {args.email} already has an account",
+                file=sys.stderr,
+            )
+            return 2
 
-    print(f"created school {school.name} ({school.id}) with login {args.email}")
-    return 0
+        try:
+            school = SchoolRepo(db).create(args.name, grades, sections)
+        except ValidationError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+
+        try:
+            UserRepo(db).create(
+                school.id, args.email, hash_password(args.password)
+            )
+        except DuplicateKeyError:
+            print(
+                f"error: {args.email} already has an account",
+                file=sys.stderr,
+            )
+            return 2
+
+        print(f"created school {school.name} ({school.id}) with login {args.email}")
+        return 0
+    except PyMongoError as exc:
+        # Ruling 23: catch database connection/operation errors (not DuplicateKeyError)
+        print(f"error: could not reach the database: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

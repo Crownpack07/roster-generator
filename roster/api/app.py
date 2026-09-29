@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from roster.api.routers import auth
+from roster.api.routers import auth, entities
 from roster.jobs.runner import SolveRunner
 from roster.store.client import get_database, make_client
 from roster.store.config import Settings, settings_from_env
@@ -57,4 +57,5 @@ def create_app(
 
     app = FastAPI(title="Roster", lifespan=lifespan)
     app.include_router(auth.router)
+    app.include_router(entities.router)
     return app

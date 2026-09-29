@@ -81,6 +81,8 @@ class SchoolRepo:
                 f"periodsPerDay must be {PERIODS_PER_DAY}; this solver models "
                 f"{PERIODS_PER_DAY} periods a day only"
             )
+        if not grades or not sections:
+            raise ValidationError("a school needs at least one grade and one section")
         doc = {
             "name": name,
             "cycleDays": cycle_days,
@@ -157,7 +159,9 @@ class TeacherRepo:
     def list(self, school_id: str) -> list[Teacher]:
         return [
             teacher_from_doc(d)
-            for d in self._c.find({"schoolId": school_id}).sort("name", 1)
+            for d in self._c.find({"schoolId": school_id}).sort(
+                [("name", 1), ("_id", 1)]
+            )
         ]
 
     def get(self, school_id: str, teacher_id: str) -> Teacher | None:
@@ -435,7 +439,8 @@ class SolutionRepo:
         self, school_id: str, scenario_id: str
     ) -> list[dict[str, Any]]:
         rows = self._c.find(
-            {"schoolId": school_id, "scenarioId": scenario_id}
+            {"schoolId": school_id, "scenarioId": scenario_id},
+            {"inputSnapshot": 0, "placements": 0},
         ).sort("createdAt", -1)
         return [self._public(d) for d in rows]
 

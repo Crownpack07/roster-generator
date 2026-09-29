@@ -230,3 +230,15 @@ def test_a_user_is_found_by_email_across_schools(db, school):
     assert found.id == user.id
     assert found.school_id == school.id
     assert repo.by_email("nobody@example.com") is None
+
+
+# --- Final review fixes ---------------------------------------------------
+
+
+def test_a_school_needs_grades_and_sections(db):
+    from roster.store.repositories import SchoolRepo, ValidationError
+
+    with pytest.raises(ValidationError):
+        SchoolRepo(db).create("M", (), ("A",))
+    with pytest.raises(ValidationError):
+        SchoolRepo(db).create("M", (4,), ())

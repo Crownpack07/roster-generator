@@ -1,6 +1,7 @@
 import mongomock
 import pytest
 
+from roster.api.security import verify_password
 from roster.cli import main
 from roster.store.repositories import SchoolRepo, UserRepo
 
@@ -41,9 +42,12 @@ def test_create_school_writes_a_school_and_a_user(patched_db, capsys):
     user = UserRepo(patched_db).by_email("head@meridian.example")
     assert user is not None
     assert user.school_id == str(schools[0]["_id"])
-    # The password is hashed, never stored as given.
+    # The password is hashed, never stored as given. Not `"pw" not in hash`:
+    # the salt and hash are random base64, which contains "pw" by chance
+    # about one time in sixty.
     assert user.password_hash != "pw"
-    assert "pw" not in user.password_hash
+    assert user.password_hash.startswith("$argon2")
+    assert verify_password(user.password_hash, "pw")
 
 
 def test_create_school_accepts_grades_and_sections(patched_db):

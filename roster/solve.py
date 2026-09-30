@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -14,6 +15,8 @@ from roster.model import build, schedule_from, total_doubles_ceiling
 from roster.preflight import Finding, has_errors, preflight
 from roster.problem import Problem
 from roster.verify import count_doubles
+
+MIN_WORKERS = 4
 
 
 class SolveStatus(StrEnum):
@@ -63,45 +66,7 @@ def solve(
         )
 
     built = build(problem)
-    solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = time_limit_s
-    if seed is not None:
-        solver.parameters.random_seed = seed
-    if workers is not None:
-        solver.parameters.num_search_workers = workers
-
-    # Time-limit/linearization decision (measured on the real Meridian
-    # fixture, seed 1, single worker, 100s cap):
-    #
-    #   scenario                       linearization=0    CP-SAT default
-    #   baseline, no min_doubles       FEASIBLE at 10.1s   FEASIBLE at 68.6s
-    #   min_doubles={(4,"HL"): 4}      FEASIBLE at 3.8s    FEASIBLE at 68.8s
-    #   min_doubles={(4,"HL"): 6}      UNKNOWN, never      UNKNOWN, never
-    #
-    # This model is almost entirely boolean, with every rule group guarded by
-    # an OnlyEnforceIf assumption literal, so CP-SAT's linear-relaxation
-    # layer buys nothing and, empirically, costs a 7-18x slowdown to first
-    # solution on every solvable instance measured. With CP-SAT's default
-    # settings the real school needs ~69s to reach a feasible timetable,
-    # which would blow straight through the old 30s default and hand a real
-    # administrator UNKNOWN on the primary use case.
-    #
-    # There is one counter-claim on record: an earlier note that on the
-    # min_doubles=6 instance (near/at the doubles ceiling) CP-SAT's default
-    # linearization found a solution at ~170s where linearization=0 did not
-    # within ~220s. That could not be reproduced within a 100s cap here —
-    # both settings return UNKNOWN on that instance, i.e. neither setting
-    # wins it, and that instance is one already established as unreachable
-    # and removed from the test suite. It is not evidence against disabling
-    # linearization for every instance this project actually ships.
-    #
-    # So: disable it unconditionally, the same choice tests/test_model.py
-    # already made for its own solver helper. This keeps production and
-    # tests coherent instead of tuned differently for no documented reason.
-    # The 30s default `time_limit_s` above is then a >3x margin over the
-    # slowest measured first-solution time (10.1s) with this setting, so the
-    # default configuration should not return UNKNOWN on a solvable school.
-    solver.parameters.linearization_level = 0
+    solver = _solver(time_limit_s, seed, workers)
 
     started = time.monotonic()
     raw = solver.Solve(built.model)
@@ -121,7 +86,7 @@ def solve(
 
     conflict = None
     if status is SolveStatus.INFEASIBLE:
-        conflict = explain(problem, built, solver)
+        conflict = _explain_infeasible(problem, time_limit_s, seed, workers)
 
     return SolveResult(
         status=status,
@@ -130,3 +95,48 @@ def solve(
         findings=findings,
         conflict=conflict,
     )
+
+
+def _explain_infeasible(
+    problem: Problem,
+    time_limit_s: float,
+    seed: int | None,
+    workers: int | None,
+) -> ConflictReport | None:
+    """Re-solve with every rule group guarded, to read which ones conflict.
+
+    Only an infeasible answer pays for the guarded model: its guards are what
+    make it slow, and a feasible solve has nothing to explain.
+    """
+    built = build(problem, guarded=True)
+    solver = _solver(time_limit_s, seed, workers)
+    solver.Solve(built.model)
+    return explain(problem, built, solver)
+
+
+def _solver(
+    time_limit_s: float, seed: int | None, workers: int | None
+) -> cp_model.CpSolver:
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = time_limit_s
+    if seed is not None:
+        solver.parameters.random_seed = seed
+    # Never fewer than four. CP-SAT fills worker slots in a fixed order.
+    # One worker runs only the tree search: no timetable in 30s on any school
+    # measured. Two or three add Feasibility Jump, which finds one in 0.3s,
+    # but then cannot prove an infeasible school infeasible within 20s. Four
+    # does both: 0.3s to a timetable, 1.2-2.3s to a proof, across seeds.
+    # Feasibility Jump needs milliseconds of CPU, so four threads sharing
+    # fewer cores still work, only slower.
+    solver.parameters.num_search_workers = max(
+        MIN_WORKERS, workers or os.cpu_count() or 1
+    )
+
+    # Linear relaxation off. Measured on the old guarded model it cost a
+    # 7-18x slowdown to first solution (10s vs 69s on the real school). Every
+    # measurement of the current model was taken with it off, including the
+    # sub-second first solutions, so it stays off; it has not been
+    # re-measured on the unguarded model.
+    solver.parameters.linearization_level = 0
+    return solver
+

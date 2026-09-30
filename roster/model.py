@@ -4,8 +4,11 @@ One boolean per (class, subject, slot): "this class studies this subject in
 this slot". Teacher occupancy is derived, because each (class, subject) pair
 maps to exactly one block, which names the teacher.
 
-Every rule group is guarded by an assumption literal so an infeasible model
-can report which groups conflict.
+A guarded build puts every rule group behind an assumption literal so an
+infeasible model can report which groups conflict. Only diagnosis builds it:
+measured, the guards cost CP-SAT so much propagation that the real school
+went from a fraction of a second to 10s, or to no answer at all depending on
+nothing but input order. So the model the solver searches carries none.
 """
 
 from __future__ import annotations
@@ -61,13 +64,14 @@ class BuiltModel:
     assumptions: dict[str, cp_model.IntVar] = field(default_factory=dict)
 
 
-def build(problem: Problem) -> BuiltModel:
+def build(problem: Problem, *, guarded: bool = False) -> BuiltModel:
     model = cp_model.CpModel()
     built = BuiltModel(model=model)
 
-    for rule in ALL_RULES:
-        built.assumptions[rule] = model.NewBoolVar(f"assume_{rule}")
-        model.AddAssumption(built.assumptions[rule])
+    if guarded:
+        for rule in ALL_RULES:
+            built.assumptions[rule] = model.NewBoolVar(f"assume_{rule}")
+            model.AddAssumption(built.assumptions[rule])
 
     # Variables.
     for class_ref in problem.classes():
@@ -83,33 +87,35 @@ def build(problem: Problem) -> BuiltModel:
     _add_core_daily(problem, built)
     _add_spread(problem, built)
     _add_doubles(problem, built)
-    _set_objective(built)
+    _set_objective(problem, built, guarded)
     return built
 
 
+def _add(built: BuiltModel, rule: str, constraint) -> None:
+    """Guard a constraint by its rule's assumption, when the build has one."""
+    guard = built.assumptions.get(rule)
+    if guard is not None:
+        constraint.OnlyEnforceIf(guard)
+
+
 def _add_slot_filled(problem: Problem, built: BuiltModel) -> None:
-    guard = built.assumptions[RULE_SLOT_FILLED]
     for class_ref in problem.classes():
         codes = list(problem.demand_for(class_ref.grade))
         for slot in range(SLOT_COUNT):
             terms = [built.x[(class_ref, c, slot)] for c in codes]
-            built.model.Add(sum(terms) == 1).OnlyEnforceIf(guard)
+            _add(built, RULE_SLOT_FILLED, built.model.Add(sum(terms) == 1))
 
 
 def _add_period_counts(problem: Problem, built: BuiltModel) -> None:
-    guard = built.assumptions[RULE_PERIOD_COUNTS]
     for class_ref in problem.classes():
         for code, n in problem.demand_for(class_ref.grade).items():
             terms = [
                 built.x[(class_ref, code, slot)] for slot in range(SLOT_COUNT)
             ]
-            built.model.Add(sum(terms) == n).OnlyEnforceIf(guard)
+            _add(built, RULE_PERIOD_COUNTS, built.model.Add(sum(terms) == n))
 
 
 def _add_teacher_rules(problem: Problem, built: BuiltModel) -> None:
-    clash_guard = built.assumptions[RULE_TEACHER_CLASH]
-    blocked_guard = built.assumptions[RULE_BLOCKED_SLOTS]
-
     owned: dict[str, list[tuple[ClassRef, str]]] = defaultdict(list)
     for class_ref in problem.classes():
         for code in problem.demand_for(class_ref.grade):
@@ -124,13 +130,12 @@ def _add_teacher_rules(problem: Problem, built: BuiltModel) -> None:
             if not terms:
                 continue
             if slot in teacher.blocked_slots:
-                built.model.Add(sum(terms) == 0).OnlyEnforceIf(blocked_guard)
+                _add(built, RULE_BLOCKED_SLOTS, built.model.Add(sum(terms) == 0))
             else:
-                built.model.Add(sum(terms) <= 1).OnlyEnforceIf(clash_guard)
+                _add(built, RULE_TEACHER_CLASH, built.model.Add(sum(terms) <= 1))
 
 
 def _add_core_daily(problem: Problem, built: BuiltModel) -> None:
-    guard = built.assumptions[RULE_CORE_DAILY]
     for class_ref in problem.classes():
         for code in problem.demand_for(class_ref.grade):
             if not problem.is_core(code):
@@ -140,16 +145,19 @@ def _add_core_daily(problem: Problem, built: BuiltModel) -> None:
                     built.x[(class_ref, code, slot)]
                     for slot in slots_of_day(day)
                 ]
-                built.model.Add(sum(terms) >= CORE_MIN_PER_DAY).OnlyEnforceIf(
-                    guard
+                _add(
+                    built,
+                    RULE_CORE_DAILY,
+                    built.model.Add(sum(terms) >= CORE_MIN_PER_DAY),
                 )
-                built.model.Add(sum(terms) <= CORE_MAX_PER_DAY).OnlyEnforceIf(
-                    guard
+                _add(
+                    built,
+                    RULE_CORE_DAILY,
+                    built.model.Add(sum(terms) <= CORE_MAX_PER_DAY),
                 )
 
 
 def _add_spread(problem: Problem, built: BuiltModel) -> None:
-    guard = built.assumptions[RULE_SPREAD]
     for class_ref in problem.classes():
         for code, n in problem.demand_for(class_ref.grade).items():
             if problem.is_core(code):
@@ -160,7 +168,7 @@ def _add_spread(problem: Problem, built: BuiltModel) -> None:
                     built.x[(class_ref, code, slot)]
                     for slot in slots_of_day(day)
                 ]
-                built.model.Add(sum(terms) <= cap).OnlyEnforceIf(guard)
+                _add(built, RULE_SPREAD, built.model.Add(sum(terms) <= cap))
 
 
 def _add_doubles(problem: Problem, built: BuiltModel) -> None:
@@ -170,7 +178,6 @@ def _add_doubles(problem: Problem, built: BuiltModel) -> None:
     can be true, so summing these variables counts doubles without the
     triple-counting a longer run would cause.
     """
-    guard = built.assumptions[RULE_MIN_DOUBLES]
     for class_ref in problem.classes():
         for code in problem.demand_for(class_ref.grade):
             if not problem.is_core(code):
@@ -190,12 +197,27 @@ def _add_doubles(problem: Problem, built: BuiltModel) -> None:
                 (class_ref.grade, code), 0
             )
             if minimum:
-                built.model.Add(sum(pair_vars) >= minimum).OnlyEnforceIf(guard)
+                _add(
+                    built,
+                    RULE_MIN_DOUBLES,
+                    built.model.Add(sum(pair_vars) >= minimum),
+                )
 
 
-def _set_objective(built: BuiltModel) -> None:
-    """Maximise total doubles. This is the only objective."""
-    built.model.Maximize(sum(built.doubles.values()))
+def _set_objective(
+    problem: Problem, built: BuiltModel, guarded: bool
+) -> None:
+    """Maximise total doubles. This is the only objective.
+
+    The ceiling is a true upper bound only while every core subject runs one
+    to two periods a day, so it is stated only when that rule cannot be
+    relaxed. Stating it lets CP-SAT prove a perfect timetable optimal and
+    stop, rather than search on until the time limit.
+    """
+    total = sum(built.doubles.values())
+    built.model.Maximize(total)
+    if not guarded:
+        built.model.Add(total <= total_doubles_ceiling(problem))
 
 
 def total_doubles_ceiling(problem: Problem) -> int:

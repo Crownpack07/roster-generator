@@ -57,27 +57,27 @@ wherever they fit rather than being forced into the morning.
 
 | Flag | Default | Notes |
 |---|---|---|
-| `--time-limit` | 30 | Seconds. See below — the default is too low for a real roster. |
+| `--time-limit` | 30 | Seconds. An upper bound: the solver stops as soon as it proves its answer is the best. |
 | `--seed` | unset | Fixes CP-SAT's random seed. Does **not** make runs reproducible; see caveats. |
-| `--workers` | unset | Search threads. Unset means all cores. |
+| `--workers` | unset | Search threads. Unset means all cores. Never fewer than 4 — see caveats. |
 
 Exit codes: **0** solved, **1** no timetable (blocked, infeasible or unknown),
 **2** the input file is missing or malformed.
 
-### Why the time limit matters
+### How long it takes
 
-CP-SAT keeps working after it finds an answer, trying to prove that answer is
-optimal. It spends its **entire** budget doing so. That has two consequences:
+The solver finds a first valid timetable in under a second, then keeps
+improving double periods until it can prove it has placed as many as the
+curriculum allows (171 on the example school), and stops there. Measured on
+the example school:
 
-- A bigger limit does not mean "up to" — it means exactly that long.
-- A bigger limit buys a **better** timetable. Measured on the example school:
-
-| `--time-limit` | Double periods placed (of 171 possible) |
+| Machine | Result |
 |---|---|
-| 30s (the default) | 125 |
-| 150s | **167** |
+| 14 cores | all 171 doubles, proven best, in 7–20 seconds |
+| 4 threads | a valid timetable in 0.3s; 167–170 doubles within 20 seconds |
 
-You build a timetable once a year. Use 150 seconds or more.
+So `--time-limit` is a ceiling, not a duration. On a machine with few cores,
+a longer limit buys a few more doubles.
 
 ---
 
@@ -157,12 +157,18 @@ Each of these names the people, grades and numbers involved:
 
 ## Caveats worth knowing before you rely on it
 
-**Solving is hard, and unpredictably so.** The school as configured solves in
-about 10 seconds. Small changes can make it unsolvable within any budget tried:
-blocking two of one teacher's slots, or enabling Sepedi with two overrides, both
-return `unknown`. Blocking one teacher's slots fails where blocking another's
-succeeds, **despite identical teaching loads**. Solvability cannot be predicted
-from the shape of an assignment.
+**The solver needs at least four search threads.** It always gets them, even on
+a one-core machine, where they share the core. With one thread CP-SAT runs only
+its tree search, which found no timetable in 30 seconds for any school tried;
+with two or three it finds one but cannot prove an impossible school
+impossible. Four do both.
+
+**Blocked slots and input order no longer decide whether it solves.** Earlier
+versions found no timetable for the same school listed in a different order,
+for one teacher's blocked slots but not another's, or with Sepedi enabled.
+That was the solver's diagnosis machinery slowing its search; it now runs only
+after a school is proven impossible. Every one of those cases now solves in
+under a second.
 
 **`unknown` is not `infeasible`.** `infeasible` means proven impossible — change
 something. `unknown` means the solver ran out of time without proving either way
@@ -172,10 +178,11 @@ something. `unknown` means the solver ran out of time without proving either way
 search wherever it happens to be, so two identical commands can return different
 but equally valid timetables. Commit the `roster.json` you intend to use.
 
-**Doubles are a preference, not a guarantee.** The solver maximises them; it
-does not promise a particular number. Forcing a minimum equal to the theoretical
-ceiling makes the problem unsolvable — measured, a minimum of 3, 4 or 5 solves
-for a 12-period subject while 6 (the ceiling) does not.
+**Doubles are a preference, not a guarantee.** The solver maximises them and on
+the example school reaches the ceiling, but a school whose rules leave less
+room may not. `minDoubles` turns the preference into a hard rule; set it only
+when a double genuinely must happen, because a school that cannot meet it has
+no timetable at all.
 
 ---
 
@@ -264,7 +271,7 @@ back.
 
 ### Solving is a background job
 
-Solving takes 10.5 seconds to several minutes, so `POST /scenarios/{id}/solve`
+Solving takes from under a second to the time limit, so `POST /scenarios/{id}/solve`
 returns `202` immediately with a solution id, and the client polls
 `GET /solutions/{id}`.
 

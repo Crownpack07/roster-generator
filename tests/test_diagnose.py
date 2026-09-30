@@ -22,7 +22,7 @@ def test_every_rule_group_has_an_english_sentence():
 
 def test_explain_names_the_conflicting_rule_groups():
     problem = meridian_problem(min_doubles={(4, "FAL"): 6})
-    built = build(problem)
+    built = build(problem, guarded=True)
     solver = cp_model.CpSolver()
     solver.parameters.num_search_workers = 1
     solver.parameters.random_seed = 1
@@ -37,7 +37,7 @@ def test_explain_names_the_conflicting_rule_groups():
 
 def test_explain_produces_one_sentence_per_rule_group():
     problem = meridian_problem(min_doubles={(4, "FAL"): 6})
-    built = build(problem)
+    built = build(problem, guarded=True)
     solver = cp_model.CpSolver()
     solver.parameters.num_search_workers = 1
     solver.parameters.random_seed = 1
@@ -87,7 +87,7 @@ def test_teacher_clash_conflict_suggests_reassignment_with_capacity():
 
 def test_explain_returns_empty_report_for_a_feasible_model():
     problem = meridian_problem()
-    built = build(problem)
+    built = build(problem, guarded=True)
     solver = cp_model.CpSolver()
     # 30s, not 120s: CP-SAT spends its whole budget proving optimality even
     # after it has an answer, and this solve only needs to reach a feasible

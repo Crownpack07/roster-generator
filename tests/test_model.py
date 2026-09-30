@@ -4,6 +4,7 @@ from ortools.sat.python import cp_model
 
 from roster.domain import SLOT_COUNT, ClassRef
 from roster.model import build, schedule_from
+from roster.solve import MIN_WORKERS
 from roster.verify import verify
 from tests.fixtures.meridian import meridian_problem
 
@@ -11,20 +12,12 @@ from tests.fixtures.meridian import meridian_problem
 def solve_built(built, time_limit=45.0, linearization_level=0):
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit
-    solver.parameters.num_search_workers = 1
+    # The production floor (see roster/solve.py): one worker never finds a
+    # timetable for the unguarded model, four find one in well under a second.
+    solver.parameters.num_search_workers = MIN_WORKERS
     solver.parameters.random_seed = 1
-    # This model is almost entirely boolean with every shape rule guarded by
-    # an OnlyEnforceIf assumption literal. CP-SAT's linear-relaxation layer
-    # buys nothing here and, empirically, costs an order of magnitude of
-    # search time on the plain Meridian fixture (first feasible solution at
-    # ~70s instead of ~10s). Disabling it is a solver-tuning choice, not a
-    # model change: num_search_workers stays 1 and the seed stays fixed.
-    #
-    # It is NOT a universal win, though: the min_doubles scenario below
-    # (near its doubles ceiling) finds a solution at ~170s with CP-SAT's
-    # default linearization, but not at all within 220s with it disabled.
-    # Callers with an unusually tight model can pass linearization_level=None
-    # to keep CP-SAT's default.
+    # CP-SAT's linear-relaxation layer buys nothing on this almost entirely
+    # boolean model, so it stays off here as it does in production.
     if linearization_level is not None:
         solver.parameters.linearization_level = linearization_level
     status = solver.Solve(built.model)
@@ -41,8 +34,20 @@ def test_variable_count_is_one_per_class_subject_slot():
     assert len(built.x) == expected
 
 
-def test_every_rule_group_has_an_assumption_literal():
+def test_the_default_model_carries_no_assumptions_or_enforcement_literals():
+    """Guards cost CP-SAT its propagation: measured, removing them took the
+    real school from 10s (or no answer at all, depending on input order) to
+    a fraction of a second. They exist only to explain an infeasible model,
+    so the model the solver searches must not carry them."""
     built = build(meridian_problem())
+    proto = built.model.Proto()
+    assert built.assumptions == {}
+    assert len(proto.assumptions) == 0
+    assert all(len(c.enforcement_literal) == 0 for c in proto.constraints)
+
+
+def test_every_rule_group_has_an_assumption_literal():
+    built = build(meridian_problem(), guarded=True)
     from roster.model import (
         RULE_BLOCKED_SLOTS,
         RULE_CORE_DAILY,

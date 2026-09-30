@@ -133,15 +133,10 @@ def test_the_real_school_solves_through_the_api_and_verifies():
             time.sleep(1.0)
 
         assert body["jobStatus"] == "done", body.get("error")
-        # The real school is known feasible, so infeasible/blocked would be
-        # a pipeline regression and must fail. Only unknown (the solver ran
-        # out of time) is an honest skip.
-        assert body["solveStatus"] in {"optimal", "feasible", "unknown"}
-        if body["solveStatus"] == "unknown":
-            pytest.skip(
-                "solver returned unknown on this hardware; "
-                "the pipeline still completed correctly"
-            )
+        # The real school solves in under a second on any input order since
+        # the search model dropped its diagnosis guards, so anything but a
+        # timetable here is a regression.
+        assert body["solveStatus"] in {"optimal", "feasible"}, body
         assert body["placements"]
         assert body["stats"]["doublesPlaced"] > 0
         assert _violations(assembled, body["placements"]) == []

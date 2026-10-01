@@ -218,13 +218,12 @@ def test_model_and_verifier_agree_on_the_doubles_count():
 def test_min_doubles_is_honoured_when_set():
     """A minimum below the ceiling is enforced.
 
-    Deliberately 4, not 6. Grade 4 HL has 12 periods, so its doubles ceiling
-    is 6 — and demanding the ceiling as a HARD constraint is the one thing
-    spec 6.5 warns against. Measured: min_doubles of 3, 4 and 5 all solve
-    (first solution in about 4 seconds), while 6 returns UNKNOWN after 90
-    seconds, so the ceiling is not reachable as a hard rule on this fixture.
-    This test's job is to prove a minimum is honoured, not to prove the
-    ceiling is attainable — which it is not.
+    4, below grade 4 HL's ceiling of 6 (12 periods). Before 6dcdd52 a
+    minimum of 6 returned UNKNOWN after 90 seconds; on the unguarded model
+    it solves, and the whole school reaches 171/171 doubles (measured
+    2026-10-01: optimal in 34s on 14 cores). Demanding the ceiling is still
+    what spec 6.5 warns against. This test's job is to prove a minimum is
+    honoured, not that the ceiling is attainable.
     """
     problem = meridian_problem(min_doubles={(4, "HL"): 4})
     built = build(problem)

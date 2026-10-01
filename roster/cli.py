@@ -21,7 +21,13 @@ def main(argv: list[str] | None = None) -> int:
     solve_cmd.add_argument("path", help="path to a problem JSON file")
     solve_cmd.add_argument("--time-limit", type=float, default=30.0)
     solve_cmd.add_argument("--seed", type=int, default=None)
-    solve_cmd.add_argument("--workers", type=int, default=None)
+    solve_cmd.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="search threads; default: available cores, at most 8; "
+        "never fewer than 4",
+    )
 
     create_cmd = sub.add_parser(
         "create-school", help="create the first school and its login"

@@ -115,7 +115,9 @@ def test_explain_returns_empty_report_for_a_feasible_model():
     # 30s, not 120s: CP-SAT spends its whole budget proving optimality even
     # after it has an answer, and this solve only needs to reach a feasible
     # model so explain() has something non-infeasible to look at. Measured
-    # first solution on this fixture is ~10.5s with linearization disabled.
+    # first solution of this GUARDED model on one worker, linearization off:
+    # ~10.4s (2026-10-01). The unguarded model solve() searches since
+    # 6dcdd52 finds one in about 0.3s; this figure is for the guards.
     solver.parameters.max_time_in_seconds = 30.0
     solver.parameters.num_search_workers = 1
     solver.parameters.random_seed = 1

@@ -59,7 +59,7 @@ wherever they fit rather than being forced into the morning.
 |---|---|---|
 | `--time-limit` | 30 | Seconds. An upper bound: the solver stops as soon as it proves its answer is the best. |
 | `--seed` | unset | Fixes CP-SAT's random seed. Does **not** make runs reproducible; see caveats. |
-| `--workers` | unset | Search threads. Unset means all cores. Never fewer than 4 — see caveats. |
+| `--workers` | unset | Search threads. Unset means the cores available to the process, at most 8. Never fewer than 4 — see caveats. |
 
 Exit codes: **0** solved, **1** no timetable (blocked, infeasible or unknown),
 **2** the input file is missing or malformed.

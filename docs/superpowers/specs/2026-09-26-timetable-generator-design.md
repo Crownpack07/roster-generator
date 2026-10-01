@@ -286,9 +286,13 @@ the `n − 6` ceiling converts a preference into a hard rule and is the fastest
 route to an unbuildable timetable.
 
 **Measured, not assumed.** For Grade 4 HL (12 periods, ceiling 6) on the real
-assignment: a minimum of 3, 4 or 5 yields a timetable with a first solution in
-roughly 4 seconds, while 6 returns `unknown` after 90 seconds. So the ceiling is
-an upper bound on what the objective can earn, never a target to demand.
+assignment, the guarded model of Phase 1 solved a minimum of 3, 4 or 5 in roughly
+4 seconds but returned `unknown` after 90 seconds for 6. Since commit 6dcdd52
+(an unguarded search model on at least four workers) a minimum of 6 solves too,
+and the whole school reaches all 171 doubles (2026-10-01: optimal in 34s on 14
+cores). Demanding the ceiling is still a hard rule where a preference would do:
+pre-flight rejects a minimum above it, and at it any perturbation can make the
+school impossible.
 
 ### 6.6 Objective
 
@@ -325,13 +329,21 @@ explains them better than any solver can.
 5. **Teacher capacity** — load + blocked slots ≤ 60. Reports by name:
    *"Christa is assigned 72 periods; only 60 exist (Gr4 Afrikaans 36 + Gr5
    Afrikaans 36)."*
-6. **Teacher daily floor** — a core subject with 12 periods across 6 days capped
-   at 2 per day is *forced* to 2 every day; across 3 classes that is 6 periods
-   daily. Per teacher: `sum over blocks of len(classes) × max(1, n − 10) <= 10`.
-   Catches one person holding two 12-period core blocks, which needs 12 periods
-   in a 10-period day.
-7. **Blocked-day conflict** — a teacher blocked for an entire day while holding a
-   subject that must appear every day.
+6. **Teacher daily floor** — per teacher and per day, the periods the rules
+   force onto that day must fit the periods free on it. A subject with `n`
+   periods is forced `max(1, n − 10)` times a day if core (1–2 a day), and
+   `max(0, n − ceil(n/6) × 5)` if not (so a 6-period non-core subject runs every
+   day). Per teacher and day: `sum over blocks of len(classes) × forced ≤ 10 −
+   blocked slots that day`. Catches one person holding two 12-period core
+   blocks (12 periods in a 10-period day), a teacher blocked for a whole day
+   who holds a daily subject, and a partly blocked day below the floor.
+7. **Double-period minimums** — a core subject's minimum above its `n − 6`
+   ceiling is an error.
+
+Before all of these, an **integrity** check runs alone: every demanded subject
+and every block's subject must have a subject row, every block's teacher must
+exist, and every blocked slot must lie in 0–59. When it fails, only its errors
+are reported, because the checks above would crash on or misread the input.
 
 ### 7.2 Layer 2 — solver conflict report
 
@@ -358,9 +370,13 @@ name the specific blocks and teachers involved. Both were wrong:
 When the returned core covers every rule group, the report says so rather than
 implying seven separate conflicts. Narrowing this — re-solving iteratively while
 dropping one assumption at a time, or registering finer-grained literals — is
-scoped as separate work: it costs up to seven extra solves at roughly ten
-seconds each, which is a real trade against a diagnosis that is already
-correct-first in its remedy ordering.
+scoped as separate work: it costs up to seven extra guarded solves, each
+anywhere from under a second (the double-minimum conflict, proven in 0.8s) to
+more than a minute (a blocked-slot conflict whose diagnosis did not finish in
+60s, 2026-10-01), which is a real trade against a diagnosis that is already
+correct-first in its remedy ordering. A diagnosis that runs out of time still
+reports the school as proven impossible and says a longer limit may name the
+rules.
 
 Layer 2 exists for structural conflicts arithmetic cannot see — for example:
 grade 6's core doubles consume periods 1–6; a teacher's grade 4 block pins her to
@@ -382,8 +398,10 @@ change that would make the tool untrustworthy.
 
 ### 7.4 Warnings (non-blocking)
 
-CAPS deviation per grade and subject, teacher load imbalance, and which optional
-subjects are currently off. These never block a solve — they are the context
+CAPS deviation per grade and subject, teacher load imbalance, which optional
+subjects are currently off, and settings the solver ignores: an override or a
+double-period minimum on a subject the grade does not take, or a minimum on a
+non-core subject. These never block a solve — they are the context
 needed to know a choice was deliberate.
 
 ## 8. Architecture

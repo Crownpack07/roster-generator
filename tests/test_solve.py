@@ -14,6 +14,7 @@ from tests.fixtures.meridian import meridian_problem
 pytestmark = pytest.mark.solver
 
 
+# workers=1 is a request, not what runs: _solver raises it to MIN_WORKERS (4).
 SOLVE_KWARGS = {"seed": 1, "workers": 1, "time_limit_s": 30.0}
 
 

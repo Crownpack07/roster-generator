@@ -54,6 +54,14 @@ was ever reported. Those words are all that survive of it.
 
 ## 2. Spec claims that measurement disproved
 
+> **Superseded in part, 2026-10-01.** Commit 6dcdd52 (search an unguarded model
+> on at least four workers) overturned the solver-hardness findings in 2.1, 2.2
+> and 3 below. Every case in those tables, including Karin's blocked slots and
+> Sepedi with overrides, now finds a timetable in about 0.3s and reaches 171/171
+> doubles; 30s is enough for 171/171 on 14 cores. `unknown` must still never be
+> shown as "impossible". The text below is kept as the record of what Phase 1
+> measured at the time.
+
 Three claims in `specs/2026-09-26-timetable-generator-design.md` were written
 during design, never tested, and turned out false. All three are corrected in the
 spec, but the corrections matter enough to restate.

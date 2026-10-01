@@ -138,6 +138,7 @@ def test_a_generated_school_solves_and_every_invariant_holds(problem):
     machine than the one measured could miss the 14s case, and a property test
     that fails on hardware speed teaches nothing.
     """
+    # workers=1 is raised to MIN_WORKERS (4) by the solver.
     result = solve(problem, seed=1, workers=1, time_limit_s=25.0)
 
     if result.status is SolveStatus.BLOCKED:

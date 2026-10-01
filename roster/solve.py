@@ -89,10 +89,7 @@ def solve(
 
     started = time.monotonic()
     raw = solver.Solve(built.model)
-    if raw == cp_model.MODEL_INVALID:
-        raise RuntimeError(
-            f"CP-SAT rejected the model as invalid: {built.model.Validate()}"
-        )
+    _raise_if_invalid(raw, built.model)
     status = _STATUS_MAP.get(raw, SolveStatus.UNKNOWN)
 
     if status in (SolveStatus.OPTIMAL, SolveStatus.FEASIBLE):
@@ -119,6 +116,14 @@ def solve(
     )
 
 
+def _raise_if_invalid(raw, model: cp_model.CpModel) -> None:
+    """An invalid model is a bug in the model, never an answer."""
+    if raw == cp_model.MODEL_INVALID:
+        raise RuntimeError(
+            f"CP-SAT rejected the model as invalid: {model.Validate()}"
+        )
+
+
 def _explain_infeasible(
     problem: Problem,
     time_limit_s: float,
@@ -134,7 +139,9 @@ def _explain_infeasible(
     """
     built = build(problem, guarded=True)
     solver = _solver(time_limit_s, seed, workers)
-    if solver.Solve(built.model) != cp_model.INFEASIBLE:
+    raw = solver.Solve(built.model)
+    _raise_if_invalid(raw, built.model)
+    if raw != cp_model.INFEASIBLE:
         return undiagnosed_report(problem)
     return explain(problem, built, solver)
 

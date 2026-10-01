@@ -78,6 +78,37 @@ def test_blocked_slots_outside_the_cycle_are_rejected():
     assert str(SLOT_COUNT - 1) in message
 
 
+def test_a_block_for_a_section_the_school_lacks_is_rejected():
+    # A stale section D would make the capacity and daily-floor checks
+    # count a class the model never creates.
+    from roster.domain import Block
+
+    p = meridian_problem()
+    p.blocks = tuple(
+        Block(b.teacher_id, b.grade, b.subject_code, ("A", "B", "C", "D"),
+              b.periods_per_class)
+        if (b.grade, b.subject_code) == (4, "SS") else b
+        for b in p.blocks
+    )
+    findings = preflight(p)
+    assert codes(findings) == {"integrity"}
+    message = findings[0].message
+    assert "Marius" in message and "Gr4 SS" in message
+    assert "section D" in message
+
+
+def test_a_block_for_a_grade_the_school_lacks_is_rejected():
+    from roster.domain import Block
+
+    p = meridian_problem()
+    p.blocks += (Block("Karin", 9, "LO", ("A", "B", "C"), 4),)
+    findings = preflight(p)
+    assert codes(findings) == {"integrity"}
+    message = findings[0].message
+    assert "Karin" in message and "Gr9 LO" in message
+    assert "grade 9" in message
+
+
 # --- class_total ------------------------------------------------------------
 # Review Focus 1
 def test_class_total_flags_grade_four_with_both_optional_subjects():
@@ -373,6 +404,18 @@ def test_a_double_minimum_on_a_subject_the_grade_does_not_take_warns():
     assert len(findings) == 2
     assert any("Gr4 NS" in f.message for f in findings)
     assert any("Gr9 HL" in f.message for f in findings)
+
+
+def test_no_nonsense_double_ceiling_for_a_core_subject_out_of_bounds():
+    # 5 and 14 periods break curriculum_bounds already; the min_doubles
+    # message would otherwise claim "at most -1 of the 6 days".
+    for n in (5, 14):
+        p = meridian_problem(
+            overrides={(4, "HL"): n}, min_doubles={(4, "HL"): 3}
+        )
+        findings = preflight(p)
+        assert "curriculum_bounds" in codes(findings, "error")
+        assert "min_doubles" not in codes(findings), n
 
 
 # --- overrides ----------------------------------------------------------------

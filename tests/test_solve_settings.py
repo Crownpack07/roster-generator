@@ -112,3 +112,11 @@ def test_solve_status_documents_every_value():
     for status in SolveStatus:
         assert status.value in doc
     assert "never" in doc.lower()
+
+
+def test_an_invalid_diagnosis_model_raises_instead_of_reporting_a_timeout(
+    monkeypatch,
+):
+    _stub_solves(monkeypatch, cp_model.INFEASIBLE, cp_model.MODEL_INVALID)
+    with pytest.raises(RuntimeError, match="invalid"):
+        solve(meridian_problem(), run_preflight=False)

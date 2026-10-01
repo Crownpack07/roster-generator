@@ -90,6 +90,29 @@ def _check_integrity(problem: Problem) -> list[Finding]:
 
     for block in problem.blocks:
         teacher = problem.teachers.get(block.teacher_id)
+        name = teacher.name if teacher else block.teacher_id
+        if block.grade not in problem.grades:
+            out.append(
+                Finding(
+                    "integrity",
+                    "error",
+                    f"{name} is assigned Gr{block.grade} "
+                    f"{block.subject_code}, but the school has no grade "
+                    f"{block.grade}.",
+                )
+            )
+        stale = [s for s in block.sections if s not in problem.sections]
+        if stale:
+            noun = "section" if len(stale) == 1 else "sections"
+            out.append(
+                Finding(
+                    "integrity",
+                    "error",
+                    f"{name} is assigned Gr{block.grade} "
+                    f"{block.subject_code} for {noun} {_join(stale)}, "
+                    f"which the school does not have.",
+                )
+            )
         if teacher is None:
             out.append(
                 Finding(
@@ -103,7 +126,6 @@ def _check_integrity(problem: Problem) -> list[Finding]:
         if block.subject_code not in problem.subjects and (
             block.subject_code not in unknown
         ):
-            name = teacher.name if teacher else block.teacher_id
             out.append(
                 Finding(
                     "integrity",
@@ -361,6 +383,8 @@ def _check_min_doubles(problem: Problem) -> list[Finding]:
                     f"into doubles, so it is ignored.",
                 )
             )
+        elif not CORE_MIN_PERIODS <= n <= CORE_MAX_PERIODS:
+            continue  # curriculum_bounds reports this; no ceiling to quote
         elif minimum > doubles_ceiling(n):
             out.append(
                 Finding(

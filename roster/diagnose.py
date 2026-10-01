@@ -76,24 +76,39 @@ def _spare_capacity(problem: Problem) -> list[tuple[str, int]]:
     return spare
 
 
+def _demanded(problem: Problem, *, core: bool) -> bool:
+    """Whether any grade takes a subject of this kind."""
+    return any(
+        problem.is_core(code) == core
+        for grade in problem.grades
+        for code in problem.demand_for(grade)
+    )
+
+
 def remedies_for(
     problem: Problem, rule_groups: tuple[str, ...]
 ) -> tuple[str, ...]:
-    """Ranked smallest changes that could restore feasibility."""
+    """Ranked smallest changes that could restore feasibility.
+
+    A remedy is offered only when its precondition holds: no lowering a
+    minimum nobody set, no core-subject advice for a school without one.
+    """
     out: list[str] = []
 
-    if RULE_MIN_DOUBLES in rule_groups:
+    if RULE_MIN_DOUBLES in rule_groups and problem.scenario.min_doubles:
         wanted = ", ".join(
             f"Gr{grade} {code} (minimum {n})"
             for (grade, code), n in sorted(problem.scenario.min_doubles.items())
         )
         out.append(
             f"Lower or remove the double-period minimum. Currently set: "
-            f"{wanted or 'none'}. The default is 0, which lets the objective "
+            f"{wanted}. The default is 0, which lets the objective "
             f"earn doubles instead of demanding them."
         )
 
-    if RULE_TEACHER_CLASH in rule_groups or RULE_BLOCKED_SLOTS in rule_groups:
+    if (
+        RULE_TEACHER_CLASH in rule_groups or RULE_BLOCKED_SLOTS in rule_groups
+    ) and len(problem.teachers) > 1:
         spare = _spare_capacity(problem)
         if spare:
             listed = ", ".join(
@@ -122,27 +137,43 @@ def remedies_for(
             )
             out.append(f"Free up blocked slots: {listed}.")
 
-    if RULE_CORE_DAILY in rule_groups:
+    if RULE_CORE_DAILY in rule_groups and _demanded(problem, core=True):
         out.append(
             f"Allow a core subject to miss a day, or to run more than twice "
             f"in one day. Both are currently hard rules and a day is only "
             f"{PERIODS_PER_DAY} periods long."
         )
 
-    if RULE_SPREAD in rule_groups:
+    if RULE_SPREAD in rule_groups and _demanded(problem, core=False):
         out.append(
             "Raise the daily cap on a non-core subject so it may run more "
             "than once in a day."
         )
 
     if RULE_PERIOD_COUNTS in rule_groups or RULE_SLOT_FILLED in rule_groups:
+        change = (
+            "turn an optional subject off, or override a curriculum count"
+            if problem.scenario.enabled_optional
+            else "override a curriculum count"
+        )
         out.append(
-            "Change a period count: turn an optional subject off, or override "
-            "a curriculum count so the grade's total fits "
+            f"Change a period count: {change} so the grade's total fits "
             f"{SLOT_COUNT} slots."
         )
 
     return tuple(out)
+
+
+def undiagnosed_report(problem: Problem) -> ConflictReport:
+    """For a school proven impossible whose diagnosis ran out of time."""
+    return ConflictReport(
+        sentences=(
+            "The timetable is proven impossible, but the diagnosis did not "
+            "finish within the time limit, so it cannot name the rules "
+            "involved. A longer time limit may name them.",
+        ),
+        remedies=remedies_for(problem, ALL_RULES),
+    )
 
 
 def explain(problem: Problem, built, solver) -> ConflictReport:

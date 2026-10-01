@@ -9,7 +9,7 @@ from enum import StrEnum
 
 from ortools.sat.python import cp_model
 
-from roster.diagnose import ConflictReport, explain
+from roster.diagnose import ConflictReport, explain, undiagnosed_report
 from roster.domain import Schedule
 from roster.model import build, schedule_from, total_doubles_ceiling
 from roster.preflight import Finding, has_errors, preflight
@@ -17,9 +17,20 @@ from roster.problem import Problem
 from roster.verify import count_doubles
 
 MIN_WORKERS = 4
+MAX_DEFAULT_WORKERS = 8
 
 
 class SolveStatus(StrEnum):
+    """What a solve ended in. Never merge two of these.
+
+    - optimal: a timetable, proven to place every achievable double.
+    - feasible: a timetable, not proven to be the best.
+    - infeasible: proven impossible. No timetable satisfies the rules.
+    - unknown: ran out of time without proving either way. Never report it
+      as "impossible": a longer limit may find a timetable.
+    - blocked: pre-flight found errors, so the solver never ran.
+    """
+
     OPTIMAL = "optimal"
     FEASIBLE = "feasible"
     INFEASIBLE = "infeasible"
@@ -42,7 +53,6 @@ _STATUS_MAP = {
     cp_model.OPTIMAL: SolveStatus.OPTIMAL,
     cp_model.FEASIBLE: SolveStatus.FEASIBLE,
     cp_model.INFEASIBLE: SolveStatus.INFEASIBLE,
-    cp_model.MODEL_INVALID: SolveStatus.UNKNOWN,
     cp_model.UNKNOWN: SolveStatus.UNKNOWN,
 }
 
@@ -55,6 +65,15 @@ def solve(
     workers: int | None = None,
     run_preflight: bool = True,
 ) -> SolveResult:
+    """Pre-flight, then search, then explain an infeasible answer.
+
+    An infeasible result runs a second, guarded solve to name the rules in
+    conflict, which has its own `time_limit_s`: such a result can take up to
+    twice the limit, and `wall_seconds` covers both solves.
+
+    Raises RuntimeError when CP-SAT rejects the model itself: that is a bug
+    in the model, never an answer about the school.
+    """
     findings = preflight(problem) if run_preflight else []
     ceiling = total_doubles_ceiling(problem)
 
@@ -70,7 +89,10 @@ def solve(
 
     started = time.monotonic()
     raw = solver.Solve(built.model)
-    elapsed = time.monotonic() - started
+    if raw == cp_model.MODEL_INVALID:
+        raise RuntimeError(
+            f"CP-SAT rejected the model as invalid: {built.model.Validate()}"
+        )
     status = _STATUS_MAP.get(raw, SolveStatus.UNKNOWN)
 
     if status in (SolveStatus.OPTIMAL, SolveStatus.FEASIBLE):
@@ -80,7 +102,7 @@ def solve(
             schedule=schedule,
             doubles_placed=count_doubles(problem, schedule),
             doubles_ceiling=ceiling,
-            wall_seconds=elapsed,
+            wall_seconds=time.monotonic() - started,
             findings=findings,
         )
 
@@ -91,7 +113,7 @@ def solve(
     return SolveResult(
         status=status,
         doubles_ceiling=ceiling,
-        wall_seconds=elapsed,
+        wall_seconds=time.monotonic() - started,
         findings=findings,
         conflict=conflict,
     )
@@ -102,15 +124,18 @@ def _explain_infeasible(
     time_limit_s: float,
     seed: int | None,
     workers: int | None,
-) -> ConflictReport | None:
+) -> ConflictReport:
     """Re-solve with every rule group guarded, to read which ones conflict.
 
     Only an infeasible answer pays for the guarded model: its guards are what
-    make it slow, and a feasible solve has nothing to explain.
+    make it slow, and a feasible solve has nothing to explain. When the
+    re-solve runs out of time the school is still proven impossible; the
+    report says so rather than coming back empty.
     """
     built = build(problem, guarded=True)
     solver = _solver(time_limit_s, seed, workers)
-    solver.Solve(built.model)
+    if solver.Solve(built.model) != cp_model.INFEASIBLE:
+        return undiagnosed_report(problem)
     return explain(problem, built, solver)
 
 
@@ -128,8 +153,12 @@ def _solver(
     # does both: 0.3s to a timetable, 1.2-2.3s to a proof, across seeds.
     # Feasibility Jump needs milliseconds of CPU, so four threads sharing
     # fewer cores still work, only slower.
+    # The default is the cores this process may use (process_cpu_count
+    # honours affinity and cgroups; it is 3.13+, so fall back), capped at 8
+    # so a big host is not monopolised. An explicit count is honoured.
+    usable = getattr(os, "process_cpu_count", os.cpu_count)() or 1
     solver.parameters.num_search_workers = max(
-        MIN_WORKERS, workers or os.cpu_count() or 1
+        MIN_WORKERS, workers or min(usable, MAX_DEFAULT_WORKERS)
     )
 
     # Linear relaxation off. Measured on the old guarded model it cost a

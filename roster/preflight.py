@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from roster.allocation import (
     caps_deviation,
     demand,
+    doubles_ceiling,
     filler_periods,
     max_per_day,
     required_periods,
@@ -330,6 +331,79 @@ def _check_teacher_daily_floor(problem: Problem) -> list[Finding]:
     return out
 
 
+def _check_min_doubles(problem: Problem) -> list[Finding]:
+    """A minimum above the ceiling is impossible; one the model never
+    reads is a setting the user believes is in force."""
+    out: list[Finding] = []
+    for (grade, code), minimum in sorted(problem.scenario.min_doubles.items()):
+        n = (
+            problem.demand_for(grade).get(code, 0)
+            if grade in problem.grades
+            else 0
+        )
+        if not n:
+            out.append(
+                Finding(
+                    "min_doubles",
+                    "warning",
+                    f"A double-period minimum of {minimum} is set for "
+                    f"Gr{grade} {code}, but grade {grade} does not take "
+                    f"{code}, so it is ignored.",
+                )
+            )
+        elif not problem.is_core(code):
+            out.append(
+                Finding(
+                    "min_doubles",
+                    "warning",
+                    f"A double-period minimum of {minimum} is set for "
+                    f"Gr{grade} {code}, but only core subjects are paired "
+                    f"into doubles, so it is ignored.",
+                )
+            )
+        elif minimum > doubles_ceiling(n):
+            out.append(
+                Finding(
+                    "min_doubles",
+                    "error",
+                    f"Gr{grade} {code} must have at least {minimum} doubles, "
+                    f"but its {n} periods can form at most "
+                    f"{doubles_ceiling(n)}: a core subject runs twice on at "
+                    f"most {n - DAYS} of the {DAYS} days.",
+                )
+            )
+    return out
+
+
+def _warn_ignored_overrides(problem: Problem) -> list[Finding]:
+    """An override only applies to a subject the grade actually takes."""
+    out: list[Finding] = []
+    scenario = problem.scenario
+    for (grade, code), periods in sorted(scenario.overrides.items()):
+        known = grade in problem.grades
+        optional = known and code in scenario.optional.subject_codes(grade)
+        taken = known and (
+            code in scenario.caps.subject_codes(grade)
+            or (optional and code in scenario.enabled_optional)
+        )
+        if taken:
+            continue
+        reason = (
+            f"{code} is an optional subject that is switched off"
+            if optional
+            else f"grade {grade} does not take {code}"
+        )
+        out.append(
+            Finding(
+                "override_ignored",
+                "warning",
+                f"An override sets Gr{grade} {code} to {periods} periods, "
+                f"but {reason}, so it is ignored.",
+            )
+        )
+    return out
+
+
 def _warn_caps_deviation(problem: Problem) -> list[Finding]:
     out: list[Finding] = []
     for grade in problem.grades:
@@ -412,10 +486,13 @@ def preflight(problem: Problem) -> list[Finding]:
     errors += _check_block_periods(problem)
     errors += _check_teacher_capacity(problem)
     errors += _check_teacher_daily_floor(problem)
+    errors += _check_min_doubles(problem)
 
     warnings: list[Finding] = []
     warnings += _warn_caps_deviation(problem)
     warnings += _warn_load_spread(problem)
     warnings += _warn_optional_off(problem)
+    warnings += _warn_ignored_overrides(problem)
 
-    return errors + warnings
+    # _check_min_doubles returns both severities; keep errors first.
+    return sorted(errors + warnings, key=lambda f: f.severity != "error")

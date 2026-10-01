@@ -330,6 +330,65 @@ def test_blocked_day_without_a_daily_subject_is_fine():
     assert "teacher_daily_floor" not in codes(preflight(p), "error")
 
 
+# --- min_doubles --------------------------------------------------------------
+def test_a_double_minimum_above_the_ceiling_is_rejected():
+    # Grade 4 FAL has 10 periods: 4 days with two, so at most 4 doubles.
+    p = meridian_problem(min_doubles={(4, "FAL"): 6})
+    findings = preflight(p)
+    assert "min_doubles" in codes(findings, "error")
+    message = next(f.message for f in findings if f.code == "min_doubles")
+    assert "Gr4 FAL" in message and "6" in message and "4" in message
+
+
+def test_a_double_minimum_at_the_ceiling_is_accepted():
+    p = meridian_problem(min_doubles={(4, "HL"): 6})
+    assert "min_doubles" not in codes(preflight(p))
+
+
+def test_a_double_minimum_on_a_non_core_subject_warns_it_is_ignored():
+    p = meridian_problem(min_doubles={(4, "SS"): 2})
+    findings = preflight(p)
+    assert "min_doubles" in codes(findings, "warning")
+    assert not has_errors(findings)
+    message = next(f.message for f in findings if f.code == "min_doubles")
+    assert "Gr4 SS" in message and "ignored" in message
+
+
+def test_a_double_minimum_on_a_subject_the_grade_does_not_take_warns():
+    p = meridian_problem(min_doubles={(4, "NS"): 1, (9, "HL"): 1})
+    findings = [f for f in preflight(p) if f.code == "min_doubles"]
+    assert {f.severity for f in findings} == {"warning"}
+    assert len(findings) == 2
+    assert any("Gr4 NS" in f.message for f in findings)
+    assert any("Gr9 HL" in f.message for f in findings)
+
+
+# --- overrides ----------------------------------------------------------------
+def test_an_override_for_a_subject_the_grade_does_not_take_warns():
+    p = meridian_problem(overrides={(4, "NS"): 5})
+    findings = preflight(p)
+    assert "override_ignored" in codes(findings, "warning")
+    assert not has_errors(findings)
+    message = next(f.message for f in findings if f.code == "override_ignored")
+    assert "Gr4 NS" in message and "5" in message and "ignored" in message
+
+
+def test_an_override_for_a_switched_off_optional_subject_warns():
+    p = meridian_problem(overrides={(4, "SEP"): 2})  # SEP is off by default
+    message = next(
+        f.message for f in preflight(p) if f.code == "override_ignored"
+    )
+    assert "Gr4 SEP" in message and "switched off" in message
+
+
+def test_an_override_the_grade_uses_is_not_flagged():
+    p = meridian_problem(
+        enabled_optional=("BIB", "SEP", "SPT"),
+        overrides={(4, "SS"): 5, (4, "SEP"): 3},
+    )
+    assert "override_ignored" not in codes(preflight(p))
+
+
 # --- warnings ---------------------------------------------------------------
 def test_caps_deviation_is_a_warning_not_an_error():
     p = meridian_problem(

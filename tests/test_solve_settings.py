@@ -31,16 +31,20 @@ def test_the_solver_never_runs_on_fewer_than_four_workers(workers):
         assert solver.parameters.num_search_workers == workers
 
 
-@pytest.mark.parametrize("cores, expected", [(2, 4), (6, 6), (64, 8)])
-def test_the_default_follows_usable_cores_capped_at_eight(
+@pytest.mark.parametrize(
+    "cores, expected", [(2, 4), (6, 6), (14, 14), (64, 16)]
+)
+def test_the_default_follows_usable_cores_capped_at_sixteen(
     monkeypatch, cores, expected
 ):
-    # process_cpu_count respects affinity and cgroups; cpu_count does not.
+    # Measured: proving 171/171 optimal took 11s on 14 workers but 29s on 8,
+    # so the cap must not bite on an ordinary workstation; it only stops a
+    # big host's core count from being taken whole.
     monkeypatch.setattr(os, "process_cpu_count", lambda: cores, raising=False)
     monkeypatch.setattr(os, "cpu_count", lambda: 999)
     solver = _solver(30.0, seed=None, workers=None)
     assert solver.parameters.num_search_workers == expected
-    assert MAX_DEFAULT_WORKERS == 8
+    assert MAX_DEFAULT_WORKERS == 16
 
 
 def test_the_default_falls_back_to_cpu_count_before_python_3_13(monkeypatch):

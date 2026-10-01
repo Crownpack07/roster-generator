@@ -25,7 +25,7 @@ def main(argv: list[str] | None = None) -> int:
         "--workers",
         type=int,
         default=None,
-        help="search threads; default: available cores, at most 8; "
+        help="search threads; default: available cores, at most 16; "
         "never fewer than 4",
     )
 

@@ -17,7 +17,7 @@ from roster.problem import Problem
 from roster.verify import count_doubles
 
 MIN_WORKERS = 4
-MAX_DEFAULT_WORKERS = 8
+MAX_DEFAULT_WORKERS = 16
 
 
 class SolveStatus(StrEnum):
@@ -161,8 +161,11 @@ def _solver(
     # Feasibility Jump needs milliseconds of CPU, so four threads sharing
     # fewer cores still work, only slower.
     # The default is the cores this process may use (process_cpu_count
-    # honours affinity and cgroups; it is 3.13+, so fall back), capped at 8
-    # so a big host is not monopolised. An explicit count is honoured.
+    # honours CPU affinity, though not a container's CPU quota; it is 3.13+,
+    # so fall back), capped at 16 so a small container on a big host does
+    # not start one worker per host core. The cap must not bite on a
+    # workstation: proving 171/171 optimal took 11s on 14 workers, 29s on 8.
+    # An explicit count is honoured.
     usable = getattr(os, "process_cpu_count", os.cpu_count)() or 1
     solver.parameters.num_search_workers = max(
         MIN_WORKERS, workers or min(usable, MAX_DEFAULT_WORKERS)

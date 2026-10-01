@@ -12,9 +12,16 @@ from roster.allocation import (
     caps_deviation,
     demand,
     filler_periods,
+    max_per_day,
     required_periods,
 )
-from roster.domain import DAYS, PERIODS_PER_DAY, SLOT_COUNT, day_of
+from roster.domain import (
+    DAYS,
+    FILLER_CODE,
+    PERIODS_PER_DAY,
+    SLOT_COUNT,
+    day_of,
+)
 from roster.problem import Problem, coverage_problems
 
 CORE_MIN_PERIODS = DAYS  # at least one a day
@@ -33,15 +40,91 @@ def has_errors(findings: list[Finding]) -> bool:
 
 
 def _forced_periods_per_day(problem: Problem, grade: int, code: str) -> int:
-    """The minimum this subject must occupy on any single day, per class."""
+    """The fewest periods this subject can have on any single day, per class.
+
+    Whatever the other five days hold at their cap, the rest lands here. A
+    core subject is capped at 2 a day and must also appear daily; a non-core
+    one is capped at ceil(n / 6). A 6-period non-core subject therefore runs
+    every day too.
+    """
     n = demand(problem.scenario, grade).get(code, 0)
     if not n:
         return 0
     if problem.is_core(code):
-        # Held to at most 2 a day across 6 days, so n periods force
-        # max(1, n - 2*(DAYS-1)) on every day.
         return max(1, n - 2 * (DAYS - 1))
-    return 0
+    return max(0, n - max_per_day(n) * (DAYS - 1))
+
+
+def _join(items: list[str]) -> str:
+    """'a', 'a and b', 'a, b and c'."""
+    if len(items) == 1:
+        return items[0]
+    return f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def _check_integrity(problem: Problem) -> list[Finding]:
+    """Every reference must resolve before any arithmetic is trusted.
+
+    An unknown subject would otherwise count as non-core, silently dropping
+    its daily rule; an unknown teacher or an out-of-range slot crashes the
+    later checks and the model.
+    """
+    out: list[Finding] = []
+    unknown: dict[str, list[str]] = {}
+    for grade in problem.grades:
+        for code in problem.demand_for(grade):
+            if code != FILLER_CODE and code not in problem.subjects:
+                unknown.setdefault(code, []).append(str(grade))
+    for code, grades in unknown.items():
+        noun = "Grade" if len(grades) == 1 else "Grades"
+        out.append(
+            Finding(
+                "integrity",
+                "error",
+                f"{noun} {_join(grades)} take {code}, but there is no "
+                f"subject {code}. Add the subject, or remove it from the "
+                f"curriculum.",
+            )
+        )
+
+    for block in problem.blocks:
+        teacher = problem.teachers.get(block.teacher_id)
+        if teacher is None:
+            out.append(
+                Finding(
+                    "integrity",
+                    "error",
+                    f"Gr{block.grade} {block.subject_code} is assigned to "
+                    f"teacher {block.teacher_id}, who is not on the staff "
+                    f"list.",
+                )
+            )
+        if block.subject_code not in problem.subjects and (
+            block.subject_code not in unknown
+        ):
+            name = teacher.name if teacher else block.teacher_id
+            out.append(
+                Finding(
+                    "integrity",
+                    "error",
+                    f"{name} is assigned Gr{block.grade} {block.subject_code}, "
+                    f"but there is no subject {block.subject_code}.",
+                )
+            )
+
+    for teacher in problem.teachers.values():
+        bad = sorted(s for s in teacher.blocked_slots if not 0 <= s < SLOT_COUNT)
+        if bad:
+            out.append(
+                Finding(
+                    "integrity",
+                    "error",
+                    f"{teacher.name} has blocked slots "
+                    f"{', '.join(map(str, bad))}, outside the cycle's slots "
+                    f"0 to {SLOT_COUNT - 1}.",
+                )
+            )
+    return out
 
 
 def _check_curriculum_bounds(problem: Problem) -> list[Finding]:
@@ -199,6 +282,12 @@ def _check_teacher_capacity(problem: Problem) -> list[Finding]:
 
 
 def _check_teacher_daily_floor(problem: Problem) -> list[Finding]:
+    """Per teacher and day: the periods the rules force onto that day
+    against the periods the teacher has free on it.
+
+    Days that fail with the same numbers are reported together, so an
+    unblocked teacher who overflows every day gets one finding, not six.
+    """
     out: list[Finding] = []
     for teacher_id, teacher in problem.teachers.items():
         forced = 0
@@ -210,45 +299,34 @@ def _check_teacher_daily_floor(problem: Problem) -> list[Finding]:
             if per_day:
                 cost = per_day * len(block.sections)
                 forced += cost
-                parts.append(
-                    f"Gr{block.grade} {block.subject_code} {cost}"
-                )
-        if forced > PERIODS_PER_DAY:
+                parts.append(f"Gr{block.grade} {block.subject_code} {cost}")
+        if not forced:
+            continue
+
+        failing: dict[int, list[str]] = {}
+        for day in range(DAYS):
+            blocked = sum(1 for s in teacher.blocked_slots if day_of(s) == day)
+            if forced > PERIODS_PER_DAY - blocked:
+                failing.setdefault(blocked, []).append(str(day + 1))
+        for blocked, days in failing.items():
+            available = PERIODS_PER_DAY - blocked
+            when = (
+                f"day {days[0]}" if len(days) == 1 else f"days {_join(days)}"
+            )
+            room = (
+                f"only {available} of the day's {PERIODS_PER_DAY} periods "
+                f"are free ({blocked} blocked)"
+                if blocked
+                else f"a day is only {PERIODS_PER_DAY} periods long"
+            )
             out.append(
                 Finding(
                     "teacher_daily_floor",
                     "error",
-                    f"{teacher.name} is forced into {forced} periods every day "
-                    f"but a day is only {PERIODS_PER_DAY} periods long. "
-                    f"Daily minimums: {', '.join(parts)}.",
+                    f"{teacher.name} is forced into {forced} periods on "
+                    f"{when}, but {room}. Daily minimums: {', '.join(parts)}.",
                 )
             )
-    return out
-
-
-def _check_blocked_day_conflicts(problem: Problem) -> list[Finding]:
-    out: list[Finding] = []
-    for teacher_id, teacher in problem.teachers.items():
-        if not teacher.blocked_slots:
-            continue
-        for day in range(DAYS):
-            day_slots = {
-                s for s in teacher.blocked_slots if day_of(s) == day
-            }
-            if len(day_slots) < PERIODS_PER_DAY:
-                continue
-            for block in problem.blocks_of(teacher_id):
-                if problem.is_core(block.subject_code):
-                    out.append(
-                        Finding(
-                            "blocked_day_conflict",
-                            "error",
-                            f"{teacher.name} is blocked for all of day "
-                            f"{day + 1} but holds Gr{block.grade} "
-                            f"{block.subject_code}, which must appear every "
-                            f"day.",
-                        )
-                    )
     return out
 
 
@@ -316,7 +394,16 @@ def _warn_optional_off(problem: Problem) -> list[Finding]:
 
 
 def preflight(problem: Problem) -> list[Finding]:
-    """Every arithmetic finding, errors first."""
+    """Every arithmetic finding, errors first.
+
+    Integrity runs alone first: when a reference does not resolve, only its
+    errors are returned, because the other checks would crash on or misread
+    the same input.
+    """
+    integrity = _check_integrity(problem)
+    if integrity:
+        return integrity
+
     errors: list[Finding] = []
     errors += _check_curriculum_bounds(problem)
     errors += _check_class_totals(problem)
@@ -325,7 +412,6 @@ def preflight(problem: Problem) -> list[Finding]:
     errors += _check_block_periods(problem)
     errors += _check_teacher_capacity(problem)
     errors += _check_teacher_daily_floor(problem)
-    errors += _check_blocked_day_conflicts(problem)
 
     warnings: list[Finding] = []
     warnings += _warn_caps_deviation(problem)

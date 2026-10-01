@@ -183,6 +183,18 @@ def test_block_periods_must_match_the_curriculum():
     assert "59" in message and "60" in message
 
 
+def test_a_block_for_a_subject_the_grade_does_not_take_is_rejected():
+    # NS is a real subject, but only grade 7 takes it.
+    from roster.domain import Block
+
+    p = meridian_problem()
+    p.blocks += (Block("Karin", 4, "NS", ("A", "B", "C"), 6),)
+    findings = preflight(p)
+    assert codes(findings, "error") == {"block_periods"}
+    message = next(f.message for f in findings if f.code == "block_periods")
+    assert "Gr4 NS" in message and "does not take it" in message
+
+
 def test_block_periods_passes_for_the_real_school():
     assert "block_periods" not in codes(preflight(meridian_problem()), "error")
 

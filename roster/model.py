@@ -127,8 +127,6 @@ def _add_teacher_rules(problem: Problem, built: BuiltModel) -> None:
         teacher = problem.teachers[teacher_id]
         for slot in range(SLOT_COUNT):
             terms = [built.x[(c, code, slot)] for c, code in pairs]
-            if not terms:
-                continue
             if slot in teacher.blocked_slots:
                 _add(built, RULE_BLOCKED_SLOTS, built.model.Add(sum(terms) == 0))
             else:

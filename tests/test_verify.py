@@ -1,5 +1,3 @@
-import pytest
-
 from roster.allocation import max_per_day
 from roster.domain import (
     DAYS,
@@ -75,31 +73,48 @@ def build_valid_schedule(problem) -> Schedule:
 
 
 def test_verifier_does_not_depend_on_the_solver():
-    """The verifier must share no code with the model.
+    """The verifier must share no code with the model, even indirectly.
 
-    Checked by parsing the real import statements rather than scanning the
-    text: the module's own docstring names both forbidden modules on purpose,
-    and a comment mentioning ortools is not a dependency.
+    Walks every roster module that roster.verify reaches through its import
+    statements, parsed rather than text-scanned: the module's own docstring
+    names the forbidden modules on purpose, and a comment is not a
+    dependency. A forbidden import two hops away fails this as surely as a
+    direct one.
     """
     import ast
-    import importlib
+    import importlib.util
 
-    # importlib.import_module, NOT `import roster.verify as module`.
-    # roster/__init__.py exports the verify FUNCTION at package level, which
-    # rebinds the `roster.verify` attribute on the package from the submodule
-    # to that function — so the plain import form yields a function with no
-    # __file__. sys.modules still holds the real module; ask for it.
-    module = importlib.import_module("roster.verify")
+    def imports_of(name: str) -> set[str]:
+        # find_spec, NOT `import roster.verify as module`: roster/__init__.py
+        # rebinds the package attribute `roster.verify` to the function.
+        path = importlib.util.find_spec(name).origin
+        tree = ast.parse(open(path, encoding="utf-8").read())
+        found: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                found.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                found.add(node.module)
+        return found
 
-    tree = ast.parse(open(module.__file__, encoding="utf-8").read())
-    imported: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            imported.add(node.module)
+    reached: set[str] = set()
+    todo, seen = ["roster.verify"], set()
+    while todo:
+        name = todo.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        for imported in imports_of(name):
+            reached.add(imported)
+            if imported.split(".")[0] == "roster":
+                todo.append(imported)
 
-    forbidden = {m for m in imported if m.startswith(("ortools", "roster.model"))}
+    assert "roster.allocation" in reached  # the walk really goes deeper
+    forbidden = {
+        m
+        for m in reached
+        if m.split(".")[0] == "ortools" or m in ("roster.model", "roster.solve")
+    }
     assert forbidden == set(), forbidden
 
 
@@ -267,3 +282,14 @@ def test_count_doubles_ignores_non_core_pairs():
     c = ClassRef(4, "A")
     schedule = Schedule((Placement(c, "SS", 0), Placement(c, "SS", 1)))
     assert count_doubles(problem, schedule) == 0
+
+
+def test_a_block_naming_an_unknown_teacher_is_a_violation_not_a_crash():
+    # verify() is public and need not follow pre-flight, so a dangling
+    # teacher id is reported rather than raised as a KeyError.
+    problem = meridian_problem()
+    schedule = build_valid_schedule(problem)
+    problem.teachers.pop("Karin")
+    violations = verify(problem, schedule)
+    unknown = [v for v in violations if v.code == "unknown_teacher"]
+    assert unknown and all("Karin" in v.message for v in unknown)

@@ -17,6 +17,7 @@ from roster.domain import (
     DAYS,
     SLOT_COUNT,
     ClassRef,
+    Placement,
     Schedule,
     day_of,
     is_adjacent,
@@ -37,6 +38,7 @@ def verify(problem: Problem, schedule: Schedule) -> list[Violation]:
     """Every way this schedule breaks a hard rule. Empty means valid."""
     out: list[Violation] = []
     out += _check_unknown_subjects(problem, schedule)
+    out += _check_unknown_teachers(problem)
     out += _check_slots_filled_once(problem, schedule)
     out += _check_period_counts(problem, schedule)
     out += _check_teacher_clashes(problem, schedule)
@@ -70,6 +72,31 @@ def _check_unknown_subjects(
                 )
             )
     return out
+
+
+def _check_unknown_teachers(problem: Problem) -> list[Violation]:
+    """Pre-flight rejects these, but verify() may be called without it.
+
+    The teacher checks below skip such blocks and report them here, rather
+    than raise a KeyError.
+    """
+    return [
+        Violation(
+            "unknown_teacher",
+            f"Gr{b.grade} {b.subject_code} is assigned to teacher "
+            f"{b.teacher_id}, who is not on the staff list.",
+        )
+        for b in problem.blocks
+        if b.teacher_id not in problem.teachers
+    ]
+
+
+def _teacher_block(problem: Problem, p: Placement):
+    """The block behind a placement, if it names a known teacher."""
+    block = problem.block_for(p.class_ref, p.subject_code)
+    if block is None or block.teacher_id not in problem.teachers:
+        return None
+    return block
 
 
 def _check_slots_filled_once(
@@ -124,7 +151,7 @@ def _check_teacher_clashes(
 ) -> list[Violation]:
     occupied: dict[tuple[str, int], list[str]] = defaultdict(list)
     for p in schedule.placements:
-        block = problem.block_for(p.class_ref, p.subject_code)
+        block = _teacher_block(problem, p)
         if block is None:
             continue
         occupied[(block.teacher_id, p.slot)].append(
@@ -149,11 +176,11 @@ def _check_blocked_slots(
 ) -> list[Violation]:
     out: list[Violation] = []
     for p in schedule.placements:
-        block = problem.block_for(p.class_ref, p.subject_code)
+        block = _teacher_block(problem, p)
         if block is None:
             continue
-        teacher = problem.teachers.get(block.teacher_id)
-        if teacher and p.slot in teacher.blocked_slots:
+        teacher = problem.teachers[block.teacher_id]
+        if p.slot in teacher.blocked_slots:
             out.append(
                 Violation(
                     "blocked_slot",

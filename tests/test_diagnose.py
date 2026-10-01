@@ -34,6 +34,11 @@ def test_explain_names_the_conflicting_rule_groups():
     problem = meridian_problem(min_doubles={(4, "FAL"): 6})
     built = build(problem, guarded=True)
     solver = cp_model.CpSolver()
+    # A bound, so a regression fails instead of hanging. Linearization off,
+    # as solve() runs it: measured, that proves this guarded model
+    # infeasible in under a second, where with it on 60s is not enough.
+    solver.parameters.max_time_in_seconds = 60.0
+    solver.parameters.linearization_level = 0
     solver.parameters.num_search_workers = 1
     solver.parameters.random_seed = 1
     status = solver.Solve(built.model)
@@ -50,6 +55,11 @@ def test_explain_produces_one_sentence_per_rule_group():
     problem = meridian_problem(min_doubles={(4, "FAL"): 6})
     built = build(problem, guarded=True)
     solver = cp_model.CpSolver()
+    # A bound, so a regression fails instead of hanging. Linearization off,
+    # as solve() runs it: measured, that proves this guarded model
+    # infeasible in under a second, where with it on 60s is not enough.
+    solver.parameters.max_time_in_seconds = 60.0
+    solver.parameters.linearization_level = 0
     solver.parameters.num_search_workers = 1
     solver.parameters.random_seed = 1
     solver.Solve(built.model)

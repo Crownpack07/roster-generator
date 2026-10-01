@@ -32,14 +32,6 @@ def test_no_meridian_teacher_is_over_capacity():
     assert min(loads.values()) > 0, loads
 
 
-def test_block_periods_match_the_curriculum_demand():
-    p = meridian_problem()
-    for block in p.blocks:
-        assert block.periods_per_class == p.demand_for(block.grade)[
-            block.subject_code
-        ]
-
-
 def test_every_block_covers_its_whole_grade():
     # One teacher owns a subject for all three classes of a grade.
     p = meridian_problem()
